@@ -1,0 +1,8 @@
+/target
+*.so
+*.a
+*.d
+*.o
+*.spv
+*.pgm
+*.png

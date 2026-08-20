@@ -1,0 +1,16 @@
+[package]
+name = "wsarndr-demo"
+version.workspace = true
+edition.workspace = true
+publish = false
+
+[[bin]]
+name = "wsarndr-demo"
+path = "src/main.rs"
+
+[dependencies]
+wsarndr = { path = "../../native", features = ["demo"] }
+winit = { version = "0.30", default-features = false, features = ["wayland", "x11", "rwh_06"] }
+glam = "0.29"
+env_logger = "0.11"
+log = "0.4"

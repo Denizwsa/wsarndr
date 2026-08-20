@@ -1,0 +1,39 @@
+[package]
+name = "wsarndr"
+version.workspace = true
+edition.workspace = true
+description = "Minecraft cross-version (1.8.9 - 1.26.2) render system — NanoVG-style immediate mode 2D + 3D world renderer, Vulkan backend"
+license.workspace = true
+
+[lib]
+name = "wsarndr"
+crate-type = ["cdylib", "staticlib", "rlib"]
+
+[dependencies]
+ash = { version = "0.38", features = ["linked"] }
+ash-window = "0.13"
+raw-window-handle = "0.6"
+jni = { version = "0.21", default-features = false, features = ["invocation"] }
+bytemuck = { version = "1", features = ["derive"] }
+glam = { version = "0.29", features = ["bytemuck"] }
+image = { version = "0.25", default-features = false, features = ["png", "jpeg"] }
+fontdue = "0.9"
+log = "0.4"
+thiserror = "2"
+anyhow = "1"
+
+[build-dependencies]
+anyhow = "1"
+
+[dev-dependencies]
+env_logger = "0.11"
+
+[features]
+default = []
+demo = ["dep:winit"]
+
+[dependencies.winit]
+version = "0.30"
+optional = true
+default-features = false
+features = ["wayland", "x11", "rwh_06"]

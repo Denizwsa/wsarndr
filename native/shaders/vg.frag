@@ -1,0 +1,82 @@
+#version 450
+
+layout(location = 0) in vec2 fragUV;
+layout(location = 1) in vec4 fragColor;
+layout(location = 2) in vec4 fragParam;
+layout(location = 3) in vec4 fragBounds;
+layout(location = 4) in vec4 fragGradColor;
+layout(location = 5) in vec2 fragGradFrom;
+layout(location = 6) in vec2 fragGradTo;
+layout(location = 7) in vec4 fragGradParams;
+
+layout(set = 0, binding = 0) uniform sampler2D uTexture;
+
+layout(push_constant) uniform Push {
+    vec2 viewport;
+    float scale;
+    float _pad;
+} pc;
+
+layout(location = 0) out vec4 outColor;
+
+const float FLAG_TEXTURE = 1.0;
+const float FLAG_STROKE  = 2.0;
+const float FLAG_LINE    = 4.0;
+
+float sdRoundRect(vec2 p, vec2 b, float r) {
+    vec2 q = abs(p) - b + vec2(r);
+    return min(max(q.x, q.y), 0.0) + length(max(q, 0.0)) - r;
+}
+
+void main() {
+    vec4 color = fragColor;
+    bool isText = mod(fragParam.w, 2.0) >= 1.0;
+
+    if (isText) {
+        float texAlpha = texture(uTexture, fragUV).r;
+        outColor = vec4(color.rgb, color.a * texAlpha);
+        return;
+    }
+
+    vec2 pos = vec2(gl_FragCoord.x, pc.viewport.y - gl_FragCoord.y);
+
+    vec2 boundsMin = fragBounds.xy;
+    vec2 boundsMax = fragBounds.zw;
+
+    vec2 center = (boundsMin + boundsMax) * 0.5;
+    vec2 halfSize = (boundsMax - boundsMin) * 0.5;
+    float radius = fragParam.z;
+    float feather = max(fragParam.y, 0.5);
+    float stroke = fragParam.x;
+
+    float d = sdRoundRect(pos - center, halfSize, radius);
+
+    float alpha;
+    float od = d;
+    if (stroke <= 0.0) {
+        alpha = clamp(0.5 - d / feather, 0.0, 1.0);
+    } else {
+        float strokeWidth = max(stroke, feather);
+        float id = strokeWidth * 0.5 - abs(d);
+        alpha = clamp(0.5 - id / feather, 0.0, 1.0);
+    }
+    if (od > feather) alpha = 0.0;
+
+    int mode = int(fragGradParams.x);
+    float t = 0.0;
+    if (mode == 1) {
+        vec2 dG = fragGradTo - fragGradFrom;
+        float len = dot(dG, dG);
+        t = len > 0.0 ? clamp(dot(pos - fragGradFrom, dG) / len, 0.0, 1.0) : 0.0;
+        color = mix(color, fragGradColor, t);
+    } else if (mode == 2) {
+        vec2 p = pos - fragGradFrom;
+        float r0 = fragGradParams.y;
+        float r1 = length(fragGradTo - fragGradFrom);
+        float dist = clamp((length(p) - r0) / max(r1 - r0, 1e-6), 0.0, 1.0);
+        color = mix(color, fragGradColor, dist);
+    }
+
+    float a = alpha * color.a;
+    outColor = vec4(color.rgb, a);
+}
