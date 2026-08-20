@@ -7,6 +7,7 @@ use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop};
 use winit::window::{Window, WindowId};
 
 use wsarndr::renderer::Renderer;
+use wsarndr::vg::layout::{Column, Rect, Row};
 use wsarndr::vg::shape::{Color, TextAlign};
 
 struct App {
@@ -145,6 +146,23 @@ impl ApplicationHandler for App {
                     let c1 = Color::argb(0xFFF38BA8);
                     let lerped = c0.lerp(c1, 0.5);
                     vg.rect_fill(w * 0.5 - 40.0 * s, h * 0.05, 80.0 * s, 10.0 * s, lerped);
+
+                    // Image demo (user texture)
+                    vg.draw_image(w * 0.12, h * 0.60, 40.0 * s, 40.0 * s, Color::argb(0xFFFFFFFF));
+                    vg.draw_rounded_image(w * 0.20, h * 0.60, 40.0 * s, 40.0 * s, 8.0 * s, Color::argb(0xFFFFFFFF));
+
+                    // Text effects
+                    vg.text_with_shadow(w * 0.42, h * 0.68, "Shadow", 16.0 * s, Color::argb(0xFFFFFFFF), Color::argb(0x88000000), [2.0 * s, 2.0 * s]);
+                    vg.text_with_outline(w * 0.42, h * 0.72, "Outline", 16.0 * s, Color::argb(0xFFFFFFFF), Color::argb(0xFF1E1E2E), 1.2 * s);
+
+                    // Layout helper demo (Row)
+                    let row_rect = Rect::new(w * 0.30, h * 0.85, 200.0 * s, 20.0 * s);
+                    let mut row = Row::new(row_rect, 6.0 * s);
+                    for (i, col) in [Color::argb(0xFF89B4FA), Color::argb(0xFFA6E3A1), Color::argb(0xFFF9E2AF)].iter().enumerate() {
+                        let cell = row.next(30.0 * s);
+                        vg.rounded_rect_fill(cell.x, cell.y, cell.w, cell.h, 4.0 * s, *col);
+                        let _ = i;
+                    }
                 });
 
                 if result.is_ok() {
@@ -170,6 +188,25 @@ fn main() {
     event_loop.run_app(&mut app).expect("run app");
 }
 
+fn checker_png() -> Vec<u8> {
+    use image::{codecs::png::PngEncoder, ExtendedColorType, ImageEncoder};
+    let w = 32u32;
+    let h = 32u32;
+    let mut rgba = Vec::with_capacity((w * h * 4) as usize);
+    for y in 0..h {
+        for x in 0..w {
+            let c = if (x / 8 + y / 8) % 2 == 0 { 0x89 } else { 0xF9 };
+            let g = if (x / 8 + y / 8) % 2 == 0 { 0xB4 } else { 0xE2 };
+            let b = if (x / 8 + y / 8) % 2 == 0 { 0xFA } else { 0xAF };
+            rgba.extend_from_slice(&[c, g, b, 0xFF]);
+        }
+    }
+    let mut out = Vec::new();
+    let enc = PngEncoder::new(&mut out);
+    enc.write_image(&rgba, w, h, ExtendedColorType::Rgba8).unwrap();
+    out
+}
+
 impl App {
     fn ensure_renderer(&mut self, event_loop: &ActiveEventLoop) {
         if self.renderer.is_some() {
@@ -180,7 +217,10 @@ impl App {
             None => return,
         };
         match Renderer::new(window, "wsarndr-demo", true, None) {
-            Ok(renderer) => {
+            Ok(mut renderer) => {
+                // Set a checker user image for demo
+                let png = checker_png();
+                let _ = renderer.vg.set_image_from_bytes(&png);
                 self.renderer = Some(renderer);
                 window.request_redraw();
             }

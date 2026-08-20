@@ -1,3 +1,4 @@
+pub mod prelude;
 pub mod renderer;
 pub mod vg;
 pub mod vk;
@@ -646,4 +647,66 @@ pub unsafe extern "system" fn Java_dev_wsarndr_Native_shadowRoundedRect(
         None => return,
     };
     rh.0.lock().unwrap().queue_shadow_rounded_rect(x, y, w, h, r, blur, [off_x, off_y], Color::argb(argb as u32));
+}
+
+#[no_mangle]
+pub unsafe extern "system" fn Java_dev_wsarndr_Native_setImage(
+    mut env: JNIEnv,
+    _class: JClass,
+    ptr: jlong,
+    data: jni::objects::JByteArray,
+) {
+    let rh = match handle(&mut env, ptr) {
+        Some(h) => h,
+        None => return,
+    };
+    let bytes = match env.convert_byte_array(data) {
+        Ok(b) => b,
+        Err(e) => {
+            let _ = env.throw_new("java/lang/IllegalArgumentException", format!("wsarndr setImage: {}", e));
+            return;
+        }
+    };
+    if let Ok(mut r) = rh.0.lock() {
+        if let Err(e) = r.vg.set_image_from_bytes(&bytes) {
+            let _ = env.throw_new("java/lang/IllegalStateException", format!("wsarndr setImage: {}", e));
+        }
+    }
+}
+
+#[no_mangle]
+pub unsafe extern "system" fn Java_dev_wsarndr_Native_drawImage(
+    mut env: JNIEnv,
+    _class: JClass,
+    ptr: jlong,
+    x: jfloat,
+    y: jfloat,
+    w: jfloat,
+    h: jfloat,
+    argb: jint,
+) {
+    let rh = match handle(&mut env, ptr) {
+        Some(h) => h,
+        None => return,
+    };
+    rh.0.lock().unwrap().queue_draw_image(x, y, w, h, Color::argb(argb as u32));
+}
+
+#[no_mangle]
+pub unsafe extern "system" fn Java_dev_wsarndr_Native_drawRoundedImage(
+    mut env: JNIEnv,
+    _class: JClass,
+    ptr: jlong,
+    x: jfloat,
+    y: jfloat,
+    w: jfloat,
+    h: jfloat,
+    r: jfloat,
+    argb: jint,
+) {
+    let rh = match handle(&mut env, ptr) {
+        Some(h) => h,
+        None => return,
+    };
+    rh.0.lock().unwrap().queue_draw_rounded_image(x, y, w, h, r, Color::argb(argb as u32));
 }

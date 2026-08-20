@@ -1,4 +1,5 @@
 pub mod font;
+pub mod layout;
 pub mod shape;
 
 
@@ -29,6 +30,7 @@ const FLAG_STROKE: f32 = 2.0;
 const FLAG_LINE: f32 = 4.0;
 const FLAG_ELLIPSE: f32 = 8.0;
 const FLAG_POLYGON: f32 = 16.0;
+const FLAG_USER_TEX: f32 = 32.0;
 
 #[repr(C)]
 #[derive(Pod, Zeroable, Copy, Clone)]
@@ -36,6 +38,15 @@ pub struct VgPushConstants {
     pub viewport: [f32; 2],
     pub scale: f32,
     pub _pad: f32,
+}
+
+struct UserTexture {
+    image: vk::Image,
+    memory: vk::DeviceMemory,
+    view: vk::ImageView,
+    sampler: vk::Sampler,
+    width: u32,
+    height: u32,
 }
 
 pub struct VgContext {
@@ -58,6 +69,7 @@ pub struct VgContext {
     pub translate: [f32; 2],
     pub transform_stack: Vec<[f32; 2]>,
     pub clip_stack: Vec<[f32; 4]>,
+    user_texture: Option<UserTexture>,
 }
 
 impl VgContext {
@@ -79,16 +91,30 @@ impl VgContext {
                     .set_layouts(std::slice::from_ref(&dsl)),
             )?[0]
         };
-        let image_info = vk::DescriptorImageInfo::default()
+        // Create 1x1 white dummy for user texture binding 1.
+        let (u_img, u_mem, u_view, u_samp) = unsafe { create_dummy_texture(device.as_ref())? };
+        let user_texture = UserTexture { image: u_img, memory: u_mem, view: u_view, sampler: u_samp, width: 1, height: 1 };
+        let font_info = vk::DescriptorImageInfo::default()
             .image_layout(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)
             .image_view(font_atlas.image_view)
             .sampler(font_atlas.sampler);
-        let write = vk::WriteDescriptorSet::default()
-            .dst_set(font_descriptor_set)
-            .dst_binding(0)
-            .descriptor_type(vk::DescriptorType::COMBINED_IMAGE_SAMPLER)
-            .image_info(std::slice::from_ref(&image_info));
-        unsafe { device.device.update_descriptor_sets(std::slice::from_ref(&write), &[]) };
+        let user_info = vk::DescriptorImageInfo::default()
+            .image_layout(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)
+            .image_view(user_texture.view)
+            .sampler(user_texture.sampler);
+        let writes = [
+            vk::WriteDescriptorSet::default()
+                .dst_set(font_descriptor_set)
+                .dst_binding(0)
+                .descriptor_type(vk::DescriptorType::COMBINED_IMAGE_SAMPLER)
+                .image_info(std::slice::from_ref(&font_info)),
+            vk::WriteDescriptorSet::default()
+                .dst_set(font_descriptor_set)
+                .dst_binding(1)
+                .descriptor_type(vk::DescriptorType::COMBINED_IMAGE_SAMPLER)
+                .image_info(std::slice::from_ref(&user_info)),
+        ];
+        unsafe { device.device.update_descriptor_sets(&writes, &[]) };
 
         let (vertex_buffer, vertex_buffer_mem) =
             unsafe { create_vertex_buffer(device.as_ref(), 1 << 16)? };
@@ -114,6 +140,7 @@ impl VgContext {
             translate: [0.0, 0.0],
             transform_stack: Vec::new(),
             clip_stack: Vec::new(),
+            user_texture: Some(user_texture),
         })
     }
 
@@ -803,6 +830,102 @@ impl VgContext {
         Ok(())
     }
 
+    /// Load a user image (PNG/JPEG bytes) into the GPU texture slot.
+    /// Modders can call this once and then use `draw_image` / `draw_rounded_image`.
+    pub fn set_image_from_bytes(&mut self, bytes: &[u8]) -> anyhow::Result<()> {
+        let img = image::load_from_memory(bytes).map_err(|e| anyhow::anyhow!("image decode: {}", e))?;
+        let rgba = img.to_rgba8();
+        let (w, h) = (rgba.width(), rgba.height());
+        let (nimg, nmem, nview, nsamp) = unsafe { create_texture_from_rgba(self.device.as_ref(), w, h, &rgba)? };
+        unsafe { self.device.device.device_wait_idle()? };
+        // Destroy old user texture if exists
+        if let Some(old) = self.user_texture.take() {
+            unsafe {
+                self.device.device.destroy_image_view(old.view, None);
+                self.device.device.destroy_sampler(old.sampler, None);
+                self.device.device.destroy_image(old.image, None);
+                self.device.device.free_memory(old.memory, None);
+            }
+        }
+        let info = vk::DescriptorImageInfo::default()
+            .image_layout(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)
+            .image_view(nview)
+            .sampler(nsamp);
+        let write = vk::WriteDescriptorSet::default()
+            .dst_set(self.font_descriptor_set)
+            .dst_binding(1)
+            .descriptor_type(vk::DescriptorType::COMBINED_IMAGE_SAMPLER)
+            .image_info(std::slice::from_ref(&info));
+        unsafe { self.device.device.update_descriptor_sets(std::slice::from_ref(&write), &[]) };
+        self.user_texture = Some(UserTexture { image: nimg, memory: nmem, view: nview, sampler: nsamp, width: w, height: h });
+        Ok(())
+    }
+
+    /// Draw the currently bound user image.
+    pub fn draw_image(&mut self, x: f32, y: f32, w: f32, h: f32, tint: impl Into<Color>) {
+        let (x, y) = self.apply(x, y);
+        self.draw_shape(&Shape {
+            kind: ShapeKind::Rect,
+            x,
+            y,
+            w,
+            h,
+            fill_color: tint.into(),
+            stroke_width: 0.0,
+            uv_override: Some([0.0, 0.0, 1.0, 1.0]),
+            ..Default::default()
+        });
+        // Patch last 6 vertices to use user texture flag
+        let n = self.vertices.len();
+        for v in &mut self.vertices[n.saturating_sub(6)..] {
+            v.param[3] += FLAG_USER_TEX;
+        }
+    }
+
+    pub fn draw_rounded_image(&mut self, x: f32, y: f32, w: f32, h: f32, r: f32, tint: impl Into<Color>) {
+        let (x, y) = self.apply(x, y);
+        self.draw_shape(&Shape {
+            kind: ShapeKind::RoundedRect { radius: r },
+            x,
+            y,
+            w,
+            h,
+            fill_color: tint.into(),
+            stroke_width: 0.0,
+            uv_override: Some([0.0, 0.0, 1.0, 1.0]),
+            ..Default::default()
+        });
+        let n = self.vertices.len();
+        for v in &mut self.vertices[n.saturating_sub(6)..] {
+            v.param[3] += FLAG_USER_TEX;
+        }
+    }
+
+    // ---- Per-corner rounded rect (extensible) ----
+    pub fn rounded_rect_corners(&mut self, x: f32, y: f32, w: f32, h: f32, radii: [f32; 4], color: impl Into<Color>) {
+        // For now uniform fallback using max radius; shader can be extended to handle 4 radii via grad params.
+        let r = radii[0].max(radii[1]).max(radii[2]).max(radii[3]);
+        self.rounded_rect_fill(x, y, w, h, r, color);
+    }
+
+    // ---- Text effects ----
+    pub fn text_with_shadow(&mut self, x: f32, y: f32, text: &str, size: f32, color: impl Into<Color>, shadow: impl Into<Color>, offset: [f32; 2]) {
+        let c: Color = color.into();
+        let s: Color = shadow.into();
+        self.text(x + offset[0], y + offset[1], text, size, s);
+        self.text(x, y, text, size, c);
+    }
+
+    pub fn text_with_outline(&mut self, x: f32, y: f32, text: &str, size: f32, color: impl Into<Color>, outline: impl Into<Color>, width: f32) {
+        let c: Color = color.into();
+        let o: Color = outline.into();
+        // Simple outline by drawing 4 offsets
+        for (dx, dy) in [(-width, 0.0), (width, 0.0), (0.0, -width), (0.0, width)] {
+            self.text(x + dx, y + dy, text, size, o);
+        }
+        self.text(x, y, text, size, c);
+    }
+
     pub fn clear() {}
 }
 
@@ -816,6 +939,61 @@ unsafe fn create_vertex_buffer(
         vk::MemoryPropertyFlags::HOST_VISIBLE | vk::MemoryPropertyFlags::HOST_COHERENT,
     )?;
     Ok((buffer, mem))
+}
+
+unsafe fn create_dummy_texture(device: &Device) -> anyhow::Result<(vk::Image, vk::DeviceMemory, vk::ImageView, vk::Sampler)> {
+    create_texture_from_rgba(device, 1, 1, &[255, 255, 255, 255])
+}
+
+unsafe fn create_texture_from_rgba(device: &Device, w: u32, h: u32, rgba: &[u8]) -> anyhow::Result<(vk::Image, vk::DeviceMemory, vk::ImageView, vk::Sampler)> {
+    let pool = device.device.create_command_pool(
+        &vk::CommandPoolCreateInfo::default().queue_family_index(device.queue_family_index),
+        None,
+    )?;
+    let (staging, staging_mem) = device.create_buffer(
+        (w * h * 4) as vk::DeviceSize,
+        vk::BufferUsageFlags::TRANSFER_SRC,
+        vk::MemoryPropertyFlags::HOST_VISIBLE | vk::MemoryPropertyFlags::HOST_COHERENT,
+    )?;
+    {
+        let ptr = device.device.map_memory(staging_mem, 0, (w * h * 4) as vk::DeviceSize, vk::MemoryMapFlags::empty())?;
+        std::ptr::copy_nonoverlapping(rgba.as_ptr(), ptr as *mut u8, (w * h * 4) as usize);
+        device.device.unmap_memory(staging_mem);
+    }
+    let (image, image_mem) = device.create_image(
+        w,
+        h,
+        vk::Format::R8G8B8A8_SRGB,
+        vk::ImageUsageFlags::TRANSFER_DST | vk::ImageUsageFlags::SAMPLED,
+        vk::MemoryPropertyFlags::DEVICE_LOCAL,
+    )?;
+    device.single_time_command(pool, |cmd| {
+        device.transition_image_layout(cmd, image, vk::ImageLayout::UNDEFINED, vk::ImageLayout::TRANSFER_DST_OPTIMAL).ok();
+        device.copy_buffer_to_image(cmd, staging, image, w, h);
+        device.transition_image_layout(cmd, image, vk::ImageLayout::TRANSFER_DST_OPTIMAL, vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL).ok();
+    })?;
+    let view = device.device.create_image_view(
+        &vk::ImageViewCreateInfo::default()
+            .image(image)
+            .view_type(vk::ImageViewType::TYPE_2D)
+            .format(vk::Format::R8G8B8A8_SRGB)
+            .subresource_range(vk::ImageSubresourceRange::default().aspect_mask(vk::ImageAspectFlags::COLOR).level_count(1).layer_count(1)),
+        None,
+    )?;
+    let sampler = device.device.create_sampler(
+        &vk::SamplerCreateInfo::default()
+            .mag_filter(vk::Filter::LINEAR)
+            .min_filter(vk::Filter::LINEAR)
+            .mipmap_mode(vk::SamplerMipmapMode::NEAREST)
+            .address_mode_u(vk::SamplerAddressMode::CLAMP_TO_EDGE)
+            .address_mode_v(vk::SamplerAddressMode::CLAMP_TO_EDGE)
+            .address_mode_w(vk::SamplerAddressMode::CLAMP_TO_EDGE),
+        None,
+    )?;
+    device.device.destroy_command_pool(pool, None);
+    device.device.destroy_buffer(staging, None);
+    device.device.free_memory(staging_mem, None);
+    Ok((image, image_mem, view, sampler))
 }
 
 unsafe fn create_pipeline_and_layout(
@@ -910,11 +1088,18 @@ unsafe fn create_pipeline_and_layout(
         .attachments(std::slice::from_ref(&color_attachment));
 
     let dsl = d.create_descriptor_set_layout(
-        &vk::DescriptorSetLayoutCreateInfo::default().bindings(&[vk::DescriptorSetLayoutBinding::default()
-            .binding(0)
-            .descriptor_type(vk::DescriptorType::COMBINED_IMAGE_SAMPLER)
-            .descriptor_count(1)
-            .stage_flags(vk::ShaderStageFlags::FRAGMENT)]),
+        &vk::DescriptorSetLayoutCreateInfo::default().bindings(&[
+            vk::DescriptorSetLayoutBinding::default()
+                .binding(0)
+                .descriptor_type(vk::DescriptorType::COMBINED_IMAGE_SAMPLER)
+                .descriptor_count(1)
+                .stage_flags(vk::ShaderStageFlags::FRAGMENT),
+            vk::DescriptorSetLayoutBinding::default()
+                .binding(1)
+                .descriptor_type(vk::DescriptorType::COMBINED_IMAGE_SAMPLER)
+                .descriptor_count(1)
+                .stage_flags(vk::ShaderStageFlags::FRAGMENT),
+        ]),
         None,
     )?;
 
@@ -923,7 +1108,7 @@ unsafe fn create_pipeline_and_layout(
             .max_sets(1)
             .pool_sizes(&[vk::DescriptorPoolSize {
                 ty: vk::DescriptorType::COMBINED_IMAGE_SAMPLER,
-                descriptor_count: 1,
+                descriptor_count: 2,
             }]),
         None,
     )?;
@@ -990,6 +1175,12 @@ impl Drop for VgContext {
     fn drop(&mut self) {
         unsafe {
             self.device.device.device_wait_idle().ok();
+            if let Some(ut) = self.user_texture.take() {
+                self.device.device.destroy_image_view(ut.view, None);
+                self.device.device.destroy_sampler(ut.sampler, None);
+                self.device.device.destroy_image(ut.image, None);
+                self.device.device.free_memory(ut.memory, None);
+            }
             self.device.device.destroy_buffer(self.vertex_buffer, None);
             self.device.device.free_memory(self.vertex_buffer_mem, None);
             self.device.device.destroy_descriptor_pool(self.descriptor_pool, None);

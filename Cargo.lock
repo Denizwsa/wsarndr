@@ -2233,6 +2233,7 @@ version = "0.1.0"
 dependencies = [
  "env_logger",
  "glam",
+ "image",
  "log",
  "winit",
  "wsarndr",

@@ -81,6 +81,8 @@ pub enum UiCommand {
     EllipseStroke(f32, f32, f32, f32, f32, Color),
     Polygon(f32, f32, f32, u32, f32, Color),
     Shadow(f32, f32, f32, f32, f32, f32, [f32; 2], Color),
+    DrawImage(f32, f32, f32, f32, Color),
+    DrawRoundedImage(f32, f32, f32, f32, f32, Color),
 }
 
 /// Builder for Renderer - lets modders configure everything before creation.
@@ -323,6 +325,18 @@ impl Renderer {
         }
     }
 
+    pub fn queue_draw_image(&self, x: f32, y: f32, w: f32, h: f32, tint: Color) {
+        if let Ok(mut q) = self.ui_queue.lock() {
+            q.push(UiCommand::DrawImage(x, y, w, h, tint));
+        }
+    }
+
+    pub fn queue_draw_rounded_image(&self, x: f32, y: f32, w: f32, h: f32, r: f32, tint: Color) {
+        if let Ok(mut q) = self.ui_queue.lock() {
+            q.push(UiCommand::DrawRoundedImage(x, y, w, h, r, tint));
+        }
+    }
+
     pub fn clear_queue(&self) {
         if let Ok(mut q) = self.ui_queue.lock() {
             q.clear();
@@ -362,6 +376,8 @@ impl Renderer {
                     UiCommand::EllipseStroke(cx, cy, rx, ry, w, c) => vg.ellipse_stroke(cx, cy, rx, ry, w, c),
                     UiCommand::Polygon(cx, cy, r, sides, rot, c) => vg.polygon_fill(cx, cy, r, sides, rot, c),
                     UiCommand::Shadow(x, y, w, h, r, b, off, c) => vg.shadow_rounded_rect(x, y, w, h, r, b, off, c),
+                    UiCommand::DrawImage(x, y, w, h, c) => vg.draw_image(x, y, w, h, c),
+                    UiCommand::DrawRoundedImage(x, y, w, h, r, c) => vg.draw_rounded_image(x, y, w, h, r, c),
                 }
             }
         }

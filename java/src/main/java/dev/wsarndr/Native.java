@@ -135,6 +135,15 @@ public final class Native {
     /** Draw a soft shadow for a rounded rect. */
     public static native void shadowRoundedRect(long ptr, float x, float y, float w, float h, float radius, float blur, float offX, float offY, int argb);
 
+    /** Set the user image from PNG/JPEG bytes for subsequent drawImage calls. */
+    public static native void setImage(long ptr, byte[] pngBytes);
+
+    /** Draw the currently bound user image. */
+    public static native void drawImage(long ptr, float x, float y, float w, float h, int tintArgb);
+
+    /** Draw the user image with rounded corners. */
+    public static native void drawRoundedImage(long ptr, float x, float y, float w, float h, float radius, int tintArgb);
+
     // ---- Color helpers (pure Java) ----
 
     /** Linearly interpolate between two ARGB colors. t in 0..1. */

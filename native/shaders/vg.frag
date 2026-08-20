@@ -11,6 +11,7 @@ layout(location = 7) in vec4 fragGradParams;
 layout(location = 8) in vec4 fragClip;
 
 layout(set = 0, binding = 0) uniform sampler2D uTexture;
+layout(set = 0, binding = 1) uniform sampler2D uUserTex;
 
 layout(push_constant) uniform Push {
     vec2 viewport;
@@ -25,6 +26,7 @@ const float FLAG_STROKE  = 2.0;
 const float FLAG_LINE    = 4.0;
 const float FLAG_ELLIPSE = 8.0;
 const float FLAG_POLYGON = 16.0;
+const float FLAG_USER_TEX = 32.0;
 
 float sdRoundRect(vec2 p, vec2 b, float r) {
     vec2 q = abs(p) - b + vec2(r);
@@ -98,6 +100,16 @@ void main() {
         alpha = clamp(0.5 - id / feather, 0.0, 1.0);
     }
     if (od > feather) alpha = 0.0;
+
+    bool isUserTex = mod(flags, 64.0) >= 32.0;
+    if (isUserTex) {
+        vec4 tex = texture(uUserTex, fragUV);
+        // Tint with vertex color and apply rounded alpha
+        vec3 rgb = tex.rgb * color.rgb;
+        float a = tex.a * color.a * alpha;
+        outColor = vec4(rgb, a);
+        return;
+    }
 
     int mode = int(fragGradParams.x);
     float t = 0.0;
