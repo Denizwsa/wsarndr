@@ -465,10 +465,10 @@ impl VgContext {
                 let gw = gi.width * scale;
                 let gh = gi.height * scale;
                 let uv = [gi.u0, gi.v0, gi.u1, gi.v1];
-                // glyph is centered in its cell (off_x/off_y stored in x_offset/y_offset)
+                // y is top of the text box; baseline is top + ascent.
+                let baseline = y + self.font_atlas.ascent * scale;
                 let gx = pen_x + gi.x_offset * scale;
-                let gy = y + gi.y_offset * scale;
-                // Empty glyphs (space) have 0 size and are not drawn, just advance.
+                let gy = baseline - gi.y_offset * scale - gh;
                 if gw > 0.0 && gh > 0.0 {
                     let shape = Shape {
                         kind: ShapeKind::Text,

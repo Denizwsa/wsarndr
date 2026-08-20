@@ -122,9 +122,9 @@ impl Renderer {
         let (image_available, render_finished, in_flight) = device.create_semaphores()?;
 
         let font_atlas = if let Some(ttf) = font_ttf {
-            FontAtlas::load(device.clone(), ttf, 32.0)?
+            FontAtlas::load(device.clone(), ttf, 48.0)?
         } else {
-            crate::vg::font::load_default_font(device.clone(), 32.0)?
+            crate::vg::font::load_default_font(device.clone(), 48.0)?
         };
 
         let vg = VgContext::new(device.clone(), instance.clone(), render_pass, font_atlas)?;

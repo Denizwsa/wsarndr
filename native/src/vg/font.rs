@@ -44,7 +44,7 @@ impl FontAtlas {
             .map(|m| m.ascent)
             .unwrap_or(font_size_px * 0.82);
 
-        let cell_w = (((font_size_px * 0.6).ceil() as usize) + 4).max(GLYPH_PX);
+        let cell_w = (font_size_px.ceil() as usize + 4).max(GLYPH_PX);
         let cell_h = (font_size_px.ceil() as usize + 4).max(GLYPH_PX);
 
         let atlas_w = (ATLAS_COLS * cell_w) as u32;
@@ -60,52 +60,29 @@ impl FontAtlas {
             let (m, coverage) = font.rasterize(ch, font_size_px);
             let cw = m.width;
             let ch_px = m.height;
-            // Scale glyph to fit inside the cell preserving aspect, then center.
-            // This makes all glyphs fill the cell height uniformly so p/y don't
-            // look bigger than other letters.
-            let (new_w, new_h, off_x, off_y) = if cw == 0 || ch_px == 0 {
-                (0, 0, 0, 0)
-            } else {
-                let sx = cell_w as f32 / cw as f32;
-                let sy = cell_h as f32 / ch_px as f32;
-                let s = sx.min(sy).min(1.6);
-                let nw = ((cw as f32 * s).round() as usize).max(1).min(cell_w);
-                let nh = ((ch_px as f32 * s).round() as usize).max(1).min(cell_h);
-                let ox = (cell_w - nw) / 2;
-                let oy = (cell_h - nh) / 2;
-                (nw, nh, ox, oy)
-            };
-            let ox = col * cell_w + off_x;
-            let oy = row * cell_h + off_y;
-            // Resample coverage into the scaled cell region.
-            if new_w > 0 && new_h > 0 && cw > 0 && ch_px > 0 {
-                let sx = cw as f32 / new_w as f32;
-                let sy = ch_px as f32 / new_h as f32;
-                for dy in 0..new_h {
-                    let syi = ((dy as f32 * sy) as usize).min(ch_px - 1);
-                    for dx in 0..new_w {
-                        let sxi = ((dx as f32 * sx) as usize).min(cw - 1);
-                        let a = coverage[syi * cw + sxi];
-                        if a > 0 {
-                            pixels[(oy + dy) * atlas_w as usize + (ox + dx)] = a;
-                        }
+            let ox = col * cell_w + cell_w.saturating_sub(cw) / 2;
+            let oy = row * cell_h + cell_h.saturating_sub(ch_px) / 2;
+            for (py, line) in coverage.chunks(cw.max(1)).enumerate() {
+                for (px, &a) in line.iter().enumerate() {
+                    if a > 0 && ox + px < atlas_w as usize && oy + py < atlas_h as usize {
+                        pixels[(oy + py) * atlas_w as usize + (ox + px)] = a;
                     }
                 }
             }
             let u0 = ox as f32 / atlas_w as f32;
             let v0 = oy as f32 / atlas_h as f32;
-            let u1 = (ox + new_w) as f32 / atlas_w as f32;
-            let v1 = (oy + new_h) as f32 / atlas_h as f32;
+            let u1 = (ox + cw) as f32 / atlas_w as f32;
+            let v1 = (oy + ch_px) as f32 / atlas_h as f32;
             glyphs.push(GlyphInfo {
                 u0,
                 v0,
                 u1,
                 v1,
-                width: new_w as f32,
-                height: new_h as f32,
-                x_offset: off_x as f32,
-                y_offset: off_y as f32,
-                advance: cell_w as f32,
+                width: cw as f32,
+                height: ch_px as f32,
+                x_offset: m.xmin as f32,
+                y_offset: m.ymin as f32,
+                advance: m.advance_width,
                 cell_w: cell_w as f32,
                 cell_h: cell_h as f32,
             });
@@ -245,8 +222,17 @@ impl Drop for FontAtlas {
     }
 }
 
+const BUNDLED_FONT: &[u8] = include_bytes!("../../assets/AdwaitaSans-Regular.ttf");
+
 pub fn load_default_font(device: SharedDevice, size_px: f32) -> anyhow::Result<FontAtlas> {
+    // Primary: bundled font inside the crate (no OS dependency)
+    if !BUNDLED_FONT.is_empty() {
+        log::info!("font: bundled AdwaitaSans-Regular.ttf ({} bytes)", BUNDLED_FONT.len());
+        return FontAtlas::load(device, BUNDLED_FONT, size_px);
+    }
+    // Fallback: system fonts
     const CANDIDATES: &[&str] = &[
+        "/usr/share/fonts/Adwaita/AdwaitaSans-Regular.ttf",
         "/usr/share/fonts/liberation/LiberationMono-Regular.ttf",
         "/usr/share/fonts/TTF/JetBrainsMonoNerdFont-Regular.ttf",
         "/usr/share/fonts/noto/NotoSansMono-Regular.ttf",
@@ -258,5 +244,5 @@ pub fn load_default_font(device: SharedDevice, size_px: f32) -> anyhow::Result<F
             return FontAtlas::load(device, &data, size_px);
         }
     }
-    anyhow::bail!("no system font found (checked {:?})", CANDIDATES)
+    anyhow::bail!("no font found (bundled missing and no system font in {:?})", CANDIDATES)
 }
