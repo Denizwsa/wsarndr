@@ -513,3 +513,137 @@ pub unsafe extern "system" fn Java_dev_wsarndr_Native_popTransform(
     };
     rh.0.lock().unwrap().queue_pop_transform();
 }
+
+#[no_mangle]
+pub unsafe extern "system" fn Java_dev_wsarndr_Native_pushClip(
+    mut env: JNIEnv,
+    _class: JClass,
+    ptr: jlong,
+    x: jfloat,
+    y: jfloat,
+    w: jfloat,
+    h: jfloat,
+) {
+    let rh = match handle(&mut env, ptr) {
+        Some(h) => h,
+        None => return,
+    };
+    rh.0.lock().unwrap().queue_push_clip(x, y, w, h);
+}
+
+#[no_mangle]
+pub unsafe extern "system" fn Java_dev_wsarndr_Native_popClip(
+    mut env: JNIEnv,
+    _class: JClass,
+    ptr: jlong,
+) {
+    let rh = match handle(&mut env, ptr) {
+        Some(h) => h,
+        None => return,
+    };
+    rh.0.lock().unwrap().queue_pop_clip();
+}
+
+#[no_mangle]
+pub unsafe extern "system" fn Java_dev_wsarndr_Native_setFont(
+    mut env: JNIEnv,
+    _class: JClass,
+    ptr: jlong,
+    data: jni::objects::JByteArray,
+    size: jfloat,
+) {
+    let rh = match handle(&mut env, ptr) {
+        Some(h) => h,
+        None => return,
+    };
+    let bytes = match env.convert_byte_array(data) {
+        Ok(b) => b,
+        Err(e) => {
+            let _ = env.throw_new("java/lang/IllegalArgumentException", format!("wsarndr setFont: {}", e));
+            return;
+        }
+    };
+    if let Ok(mut r) = rh.0.lock() {
+        if let Err(e) = r.set_font(&bytes, size as f32) {
+            let _ = env.throw_new("java/lang/IllegalStateException", format!("wsarndr setFont: {}", e));
+        }
+    }
+}
+
+#[no_mangle]
+pub unsafe extern "system" fn Java_dev_wsarndr_Native_ellipse(
+    mut env: JNIEnv,
+    _class: JClass,
+    ptr: jlong,
+    cx: jfloat,
+    cy: jfloat,
+    rx: jfloat,
+    ry: jfloat,
+    argb: jint,
+) {
+    let rh = match handle(&mut env, ptr) {
+        Some(h) => h,
+        None => return,
+    };
+    rh.0.lock().unwrap().queue_ellipse(cx, cy, rx, ry, Color::argb(argb as u32));
+}
+
+#[no_mangle]
+pub unsafe extern "system" fn Java_dev_wsarndr_Native_ellipseStroke(
+    mut env: JNIEnv,
+    _class: JClass,
+    ptr: jlong,
+    cx: jfloat,
+    cy: jfloat,
+    rx: jfloat,
+    ry: jfloat,
+    width: jfloat,
+    argb: jint,
+) {
+    let rh = match handle(&mut env, ptr) {
+        Some(h) => h,
+        None => return,
+    };
+    rh.0.lock().unwrap().queue_ellipse_stroke(cx, cy, rx, ry, width, Color::argb(argb as u32));
+}
+
+#[no_mangle]
+pub unsafe extern "system" fn Java_dev_wsarndr_Native_polygon(
+    mut env: JNIEnv,
+    _class: JClass,
+    ptr: jlong,
+    cx: jfloat,
+    cy: jfloat,
+    radius: jfloat,
+    sides: jint,
+    rotation_deg: jfloat,
+    argb: jint,
+) {
+    let rh = match handle(&mut env, ptr) {
+        Some(h) => h,
+        None => return,
+    };
+    rh.0.lock().unwrap().queue_polygon(cx, cy, radius, sides as u32, rotation_deg, Color::argb(argb as u32));
+}
+
+#[no_mangle]
+pub unsafe extern "system" fn Java_dev_wsarndr_Native_shadowRoundedRect(
+    mut env: JNIEnv,
+    _class: JClass,
+    ptr: jlong,
+    x: jfloat,
+    y: jfloat,
+    w: jfloat,
+    h: jfloat,
+    r: jfloat,
+    blur: jfloat,
+    off_x: jfloat,
+    off_y: jfloat,
+    argb: jint,
+) {
+    let rh = match handle(&mut env, ptr) {
+        Some(h) => h,
+        None => return,
+    };
+    rh.0.lock().unwrap().queue_shadow_rounded_rect(x, y, w, h, r, blur, [off_x, off_y], Color::argb(argb as u32));
+}

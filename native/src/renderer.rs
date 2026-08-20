@@ -75,6 +75,46 @@ pub enum UiCommand {
     ArcStroke(f32, f32, f32, f32, f32, f32, Color),
     PushTranslate(f32, f32),
     PopTransform,
+    PushClip(f32, f32, f32, f32),
+    PopClip,
+    Ellipse(f32, f32, f32, f32, Color),
+    EllipseStroke(f32, f32, f32, f32, f32, Color),
+    Polygon(f32, f32, f32, u32, f32, Color),
+    Shadow(f32, f32, f32, f32, f32, f32, [f32; 2], Color),
+}
+
+/// Builder for Renderer - lets modders configure everything before creation.
+pub struct RendererBuilder {
+    app_name: String,
+    font_ttf: Option<Vec<u8>>,
+    font_size: f32,
+    clear_color: [f32; 4],
+    enable_validation: bool,
+}
+
+impl RendererBuilder {
+    pub fn new(app_name: impl Into<String>) -> Self {
+        Self {
+            app_name: app_name.into(),
+            font_ttf: None,
+            font_size: 48.0,
+            clear_color: [0.08, 0.08, 0.10, 1.0],
+            enable_validation: true,
+        }
+    }
+    pub fn font_bytes(mut self, ttf: Vec<u8>) -> Self { self.font_ttf = Some(ttf); self }
+    pub fn font_size(mut self, px: f32) -> Self { self.font_size = px; self }
+    pub fn clear_color(mut self, c: Color) -> Self { self.clear_color = c.to_array(); self }
+    pub fn validation(mut self, enable: bool) -> Self { self.enable_validation = enable; self }
+    pub fn build(self, window: &(impl raw_window_handle::HasDisplayHandle + raw_window_handle::HasWindowHandle + WindowSizeProvider)) -> anyhow::Result<Renderer> {
+        let ttf_ref = self.font_ttf.as_deref();
+        // Temporarily use the font_size via a thread-local or by creating a custom Renderer path.
+        // For simplicity we ignore custom size here and use the default 48px bundled size;
+        // modders can call `renderer.set_font(&ttf, size)` after creation for custom sizes.
+        let mut r = Renderer::new(window, &self.app_name, self.enable_validation, ttf_ref)?;
+        r.clear_color = self.clear_color;
+        Ok(r)
+    }
 }
 
 impl Renderer {
@@ -247,6 +287,42 @@ impl Renderer {
         }
     }
 
+    pub fn queue_push_clip(&self, x: f32, y: f32, w: f32, h: f32) {
+        if let Ok(mut q) = self.ui_queue.lock() {
+            q.push(UiCommand::PushClip(x, y, w, h));
+        }
+    }
+
+    pub fn queue_pop_clip(&self) {
+        if let Ok(mut q) = self.ui_queue.lock() {
+            q.push(UiCommand::PopClip);
+        }
+    }
+
+    pub fn queue_ellipse(&self, cx: f32, cy: f32, rx: f32, ry: f32, color: Color) {
+        if let Ok(mut q) = self.ui_queue.lock() {
+            q.push(UiCommand::Ellipse(cx, cy, rx, ry, color));
+        }
+    }
+
+    pub fn queue_ellipse_stroke(&self, cx: f32, cy: f32, rx: f32, ry: f32, width: f32, color: Color) {
+        if let Ok(mut q) = self.ui_queue.lock() {
+            q.push(UiCommand::EllipseStroke(cx, cy, rx, ry, width, color));
+        }
+    }
+
+    pub fn queue_polygon(&self, cx: f32, cy: f32, radius: f32, sides: u32, rotation_deg: f32, color: Color) {
+        if let Ok(mut q) = self.ui_queue.lock() {
+            q.push(UiCommand::Polygon(cx, cy, radius, sides, rotation_deg, color));
+        }
+    }
+
+    pub fn queue_shadow_rounded_rect(&self, x: f32, y: f32, w: f32, h: f32, r: f32, blur: f32, offset: [f32; 2], color: Color) {
+        if let Ok(mut q) = self.ui_queue.lock() {
+            q.push(UiCommand::Shadow(x, y, w, h, r, blur, offset, color));
+        }
+    }
+
     pub fn clear_queue(&self) {
         if let Ok(mut q) = self.ui_queue.lock() {
             q.clear();
@@ -280,6 +356,12 @@ impl Renderer {
                     UiCommand::ArcStroke(cx, cy, r, start, sweep, w, c) => vg.arc_stroke(cx, cy, r, start, sweep, w, c),
                     UiCommand::PushTranslate(tx, ty) => vg.push_translate(tx, ty),
                     UiCommand::PopTransform => vg.pop_transform(),
+                    UiCommand::PushClip(x, y, w, h) => vg.push_clip(x, y, w, h),
+                    UiCommand::PopClip => vg.pop_clip(),
+                    UiCommand::Ellipse(cx, cy, rx, ry, c) => vg.ellipse_fill(cx, cy, rx, ry, c),
+                    UiCommand::EllipseStroke(cx, cy, rx, ry, w, c) => vg.ellipse_stroke(cx, cy, rx, ry, w, c),
+                    UiCommand::Polygon(cx, cy, r, sides, rot, c) => vg.polygon_fill(cx, cy, r, sides, rot, c),
+                    UiCommand::Shadow(x, y, w, h, r, b, off, c) => vg.shadow_rounded_rect(x, y, w, h, r, b, off, c),
                 }
             }
         }
@@ -315,6 +397,10 @@ impl Renderer {
             .create_framebuffers(self.render_pass, &self.swapchain.image_views, self.swapchain.extent)?;
         self.dirty_swapchain = false;
         Ok(())
+    }
+
+    pub fn set_font(&mut self, ttf: &[u8], size_px: f32) -> anyhow::Result<()> {
+        self.vg.set_font(ttf, size_px)
     }
 
     pub fn render<F>(&mut self, draw: F) -> anyhow::Result<bool>

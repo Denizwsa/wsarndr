@@ -21,11 +21,14 @@ pub struct VgVertex {
     pub grad_from: [f32; 2],
     pub grad_to: [f32; 2],
     pub grad_params: [f32; 4],
+    pub clip: [f32; 4],
 }
 
 const FLAG_TEXTURE: f32 = 1.0;
 const FLAG_STROKE: f32 = 2.0;
 const FLAG_LINE: f32 = 4.0;
+const FLAG_ELLIPSE: f32 = 8.0;
+const FLAG_POLYGON: f32 = 16.0;
 
 #[repr(C)]
 #[derive(Pod, Zeroable, Copy, Clone)]
@@ -54,6 +57,7 @@ pub struct VgContext {
     pub needs_upload: bool,
     pub translate: [f32; 2],
     pub transform_stack: Vec<[f32; 2]>,
+    pub clip_stack: Vec<[f32; 4]>,
 }
 
 impl VgContext {
@@ -109,6 +113,7 @@ impl VgContext {
             needs_upload: false,
             translate: [0.0, 0.0],
             transform_stack: Vec::new(),
+            clip_stack: Vec::new(),
         })
     }
 
@@ -119,6 +124,7 @@ impl VgContext {
         self.needs_upload = false;
         self.translate = [0.0, 0.0];
         self.transform_stack.clear();
+        self.clip_stack.clear();
     }
 
     pub fn upload(&mut self, device: &Device) -> anyhow::Result<()> {
@@ -228,6 +234,16 @@ impl VgContext {
                 shape.stroke_width,
                 if shape.stroke_width > 0.0 { FLAG_STROKE } else { 0.0 },
             ),
+            ShapeKind::Ellipse => (
+                half.max(0.001),
+                shape.stroke_width,
+                FLAG_ELLIPSE + if shape.stroke_width > 0.0 { FLAG_STROKE } else { 0.0 },
+            ),
+            ShapeKind::Polygon { sides } => (
+                sides as f32,
+                shape.stroke_width,
+                FLAG_POLYGON + if shape.stroke_width > 0.0 { FLAG_STROKE } else { 0.0 },
+            ),
             ShapeKind::Triangle { .. } => (
                 0.0,
                 shape.stroke_width,
@@ -295,6 +311,7 @@ impl VgContext {
                         0.0,
                         0.0,
                     ],
+                    clip: self.current_clip(),
                 };
                 self.vertices.push(v);
             }
@@ -528,6 +545,35 @@ impl VgContext {
         (x + self.translate[0], y + self.translate[1])
     }
 
+    // ---- Clip stack ----
+
+    /// Push a clip rectangle. All subsequent draws are clipped to this rect (intersected with previous clip).
+    pub fn push_clip(&mut self, x: f32, y: f32, w: f32, h: f32) {
+        let (x, y) = self.apply(x, y);
+        let rect = if let Some(&cur) = self.clip_stack.last() {
+            if cur[2] < 0.0 {
+                [x, y, w, h]
+            } else {
+                let x0 = x.max(cur[0]);
+                let y0 = y.max(cur[1]);
+                let x1 = (x + w).min(cur[0] + cur[2]);
+                let y1 = (y + h).min(cur[1] + cur[3]);
+                [x0, y0, (x1 - x0).max(0.0), (y1 - y0).max(0.0)]
+            }
+        } else {
+            [x, y, w, h]
+        };
+        self.clip_stack.push(rect);
+    }
+
+    pub fn pop_clip(&mut self) {
+        self.clip_stack.pop();
+    }
+
+    fn current_clip(&self) -> [f32; 4] {
+        self.clip_stack.last().copied().unwrap_or([-1.0, -1.0, -1.0, -1.0])
+    }
+
     // ---- Triangle ----
 
     pub fn triangle_fill(
@@ -632,6 +678,63 @@ impl VgContext {
         });
     }
 
+    // ---- Ellipse ----
+
+    pub fn ellipse_fill(&mut self, cx: f32, cy: f32, rx: f32, ry: f32, color: impl Into<Color>) {
+        let (cx, cy) = self.apply(cx, cy);
+        self.draw_shape(&Shape {
+            kind: ShapeKind::Ellipse,
+            x: cx - rx,
+            y: cy - ry,
+            w: rx * 2.0,
+            h: ry * 2.0,
+            fill_color: color.into(),
+            stroke_width: 0.0,
+            ..Default::default()
+        });
+    }
+
+    pub fn ellipse_stroke(&mut self, cx: f32, cy: f32, rx: f32, ry: f32, width: f32, color: impl Into<Color>) {
+        let (cx, cy) = self.apply(cx, cy);
+        self.draw_shape(&Shape {
+            kind: ShapeKind::Ellipse,
+            x: cx - rx,
+            y: cy - ry,
+            w: rx * 2.0,
+            h: ry * 2.0,
+            fill_color: color.into(),
+            stroke_width: width,
+            ..Default::default()
+        });
+    }
+
+    // ---- Regular polygon ----
+
+    pub fn polygon_fill(&mut self, cx: f32, cy: f32, radius: f32, sides: u32, rotation_deg: f32, color: impl Into<Color>) {
+        let (cx, cy) = self.apply(cx, cy);
+        self.draw_shape(&Shape {
+            kind: ShapeKind::Polygon { sides: sides.max(3) },
+            x: cx - radius,
+            y: cy - radius,
+            w: radius * 2.0,
+            h: radius * 2.0,
+            fill_color: color.into(),
+            stroke_width: 0.0,
+            grad_inner_radius: rotation_deg.to_radians(),
+            ..Default::default()
+        });
+    }
+
+    // ---- Shadow helper ----
+
+    /// Draw a soft shadow for a rounded rect (offset + blur).
+    pub fn shadow_rounded_rect(&mut self, x: f32, y: f32, w: f32, h: f32, r: f32, blur: f32, offset: [f32; 2], color: impl Into<Color>) {
+        let base: Color = color.into();
+        let c = base.with_alpha(base.a * 0.35);
+        let b = blur;
+        self.rounded_rect_fill(x + offset[0] - b, y + offset[1] - b, w + b * 2.0, h + b * 2.0, r + b, c);
+    }
+
     pub fn linear_gradient_rounded_rect(
         &mut self,
         x: f32,
@@ -680,6 +783,24 @@ impl VgContext {
             stroke_width: 0.0,
             ..Default::default()
         });
+    }
+
+    /// Reload font from TTF bytes. Allows modders to use custom fonts at runtime.
+    pub fn set_font(&mut self, ttf: &[u8], size_px: f32) -> anyhow::Result<()> {
+        let new_atlas = FontAtlas::load(self.device.clone(), ttf, size_px)?;
+        unsafe { self.device.device.device_wait_idle()? };
+        let image_info = vk::DescriptorImageInfo::default()
+            .image_layout(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)
+            .image_view(new_atlas.image_view)
+            .sampler(new_atlas.sampler);
+        let write = vk::WriteDescriptorSet::default()
+            .dst_set(self.font_descriptor_set)
+            .dst_binding(0)
+            .descriptor_type(vk::DescriptorType::COMBINED_IMAGE_SAMPLER)
+            .image_info(std::slice::from_ref(&image_info));
+        unsafe { self.device.device.update_descriptor_sets(std::slice::from_ref(&write), &[]) };
+        self.font_atlas = new_atlas;
+        Ok(())
     }
 
     pub fn clear() {}
@@ -748,6 +869,7 @@ unsafe fn create_pipeline_and_layout(
         vertex_attr(6, vk::Format::R32G32_SFLOAT, 80),
         vertex_attr(7, vk::Format::R32G32_SFLOAT, 88),
         vertex_attr(8, vk::Format::R32G32B32A32_SFLOAT, 96),
+        vertex_attr(9, vk::Format::R32G32B32A32_SFLOAT, 112),
     ];
 
     let vertex_input = vk::PipelineVertexInputStateCreateInfo::default()

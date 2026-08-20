@@ -125,6 +125,26 @@ impl ApplicationHandler for App {
                     // Text alignment demo
                     vg.text_aligned(w * 0.5, h * 0.92, "Centered text", 14.0 * s, Color::argb(0xFF89B4FA), TextAlign::Center);
                     vg.text_aligned(w * 0.85, h * 0.88, "Right", 14.0 * s, Color::argb(0xFFA6E3A1), TextAlign::Right);
+
+                    // --- Extensibility showcase ---
+                    // Shadow for TargetHUD
+                    vg.shadow_rounded_rect(thx, thy, thw, thh, 6.0 * s, 8.0 * s, [3.0 * s, 3.0 * s], Color::argb(0xFF000000));
+                    // Ellipse
+                    vg.ellipse_fill(w * 0.12, h * 0.45, 30.0 * s, 15.0 * s, Color::argb(0xFF89B4FA));
+                    vg.ellipse_stroke(w * 0.12, h * 0.45, 30.0 * s, 15.0 * s, 2.0 * s, Color::argb(0xFFCDD6F4));
+                    // Polygon (hexagon badge)
+                    vg.polygon_fill(w * 0.85, h * 0.15, 22.0 * s, 6, _t * 30.0, Color::argb(0xFFF38BA8));
+                    vg.text_aligned(w * 0.85, h * 0.15 - 6.0 * s, "6", 12.0 * s, Color::argb(0xFFFFFFFF), TextAlign::Center);
+                    // Clip demo: scrollable panel
+                    vg.push_clip(px, py + ph, pw, 40.0 * s);
+                    vg.rect_fill(px, py + ph + 4.0 * s, pw, 20.0 * s, Color::argb(0xFF585B70));
+                    vg.text(px + 8.0 * s, py + ph + 8.0 * s, "Clipped content", 12.0 * s, Color::argb(0xFFCDD6F4));
+                    vg.pop_clip();
+                    // Color lerp demo
+                    let c0 = Color::argb(0xFF89B4FA);
+                    let c1 = Color::argb(0xFFF38BA8);
+                    let lerped = c0.lerp(c1, 0.5);
+                    vg.rect_fill(w * 0.5 - 40.0 * s, h * 0.05, 80.0 * s, 10.0 * s, lerped);
                 });
 
                 if result.is_ok() {

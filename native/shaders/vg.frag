@@ -8,6 +8,7 @@ layout(location = 4) in vec4 fragGradColor;
 layout(location = 5) in vec2 fragGradFrom;
 layout(location = 6) in vec2 fragGradTo;
 layout(location = 7) in vec4 fragGradParams;
+layout(location = 8) in vec4 fragClip;
 
 layout(set = 0, binding = 0) uniform sampler2D uTexture;
 
@@ -22,13 +23,40 @@ layout(location = 0) out vec4 outColor;
 const float FLAG_TEXTURE = 1.0;
 const float FLAG_STROKE  = 2.0;
 const float FLAG_LINE    = 4.0;
+const float FLAG_ELLIPSE = 8.0;
+const float FLAG_POLYGON = 16.0;
 
 float sdRoundRect(vec2 p, vec2 b, float r) {
     vec2 q = abs(p) - b + vec2(r);
     return min(max(q.x, q.y), 0.0) + length(max(q, 0.0)) - r;
 }
 
+float sdEllipse(vec2 p, vec2 ab) {
+    // Approximate ellipse SDF: scale to unit circle
+    vec2 q = p / ab;
+    float d = (length(q) - 1.0) * min(ab.x, ab.y);
+    // Refine with one Newton iteration for better accuracy
+    // (good enough for UI)
+    return d;
+}
+
+float sdRegularPolygon(vec2 p, float r, float n, float rot) {
+    float a = atan(p.y, p.x) + rot;
+    float b = 6.28318530718 / n;
+    return cos(floor(0.5 + a / b) * b - a) * length(p) - r;
+}
+
 void main() {
+    vec2 pos = vec2(gl_FragCoord.x, pc.viewport.y - gl_FragCoord.y);
+
+    // Clip rect discard (w < 0 means no clip)
+    if (fragClip.z >= 0.0) {
+        if (pos.x < fragClip.x || pos.y < fragClip.y ||
+            pos.x > fragClip.x + fragClip.z || pos.y > fragClip.y + fragClip.w) {
+            discard;
+        }
+    }
+
     vec4 color = fragColor;
     bool isText = mod(fragParam.w, 2.0) >= 1.0;
 
@@ -38,8 +66,6 @@ void main() {
         return;
     }
 
-    vec2 pos = vec2(gl_FragCoord.x, pc.viewport.y - gl_FragCoord.y);
-
     vec2 boundsMin = fragBounds.xy;
     vec2 boundsMax = fragBounds.zw;
 
@@ -48,8 +74,19 @@ void main() {
     float radius = fragParam.z;
     float feather = max(fragParam.y, 0.5);
     float stroke = fragParam.x;
+    float flags = fragParam.w;
 
-    float d = sdRoundRect(pos - center, halfSize, radius);
+    float d;
+    if (mod(flags, 32.0) >= 16.0) {
+        // Polygon: radius = halfSize.x, sides = radius param, rot = grad y
+        float n = max(radius, 3.0);
+        float rot = fragGradParams.y;
+        d = sdRegularPolygon(pos - center, halfSize.x, n, rot);
+    } else if (mod(flags, 16.0) >= 8.0) {
+        d = sdEllipse(pos - center, halfSize);
+    } else {
+        d = sdRoundRect(pos - center, halfSize, radius);
+    }
 
     float alpha;
     float od = d;

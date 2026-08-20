@@ -9,6 +9,7 @@ layout(location = 5) in vec4 inGradColor;
 layout(location = 6) in vec2 inGradFrom;
 layout(location = 7) in vec2 inGradTo;
 layout(location = 8) in vec4 inGradParams; // x = mode (0 solid,1 linear,2 radial), y = inner radius, z,w unused
+layout(location = 9) in vec4 inClip;        // x,y,w,h  (w<0 => no clip)
 
 layout(push_constant) uniform Push {
     vec2 viewport;
@@ -24,6 +25,7 @@ layout(location = 4) out vec4 fragGradColor;
 layout(location = 5) out vec2 fragGradFrom;
 layout(location = 6) out vec2 fragGradTo;
 layout(location = 7) out vec4 fragGradParams;
+layout(location = 8) out vec4 fragClip;
 
 void main() {
     gl_Position = vec4(inPos, 0.0, 1.0);
@@ -35,4 +37,5 @@ void main() {
     fragGradFrom = inGradFrom;
     fragGradTo = inGradTo;
     fragGradParams = inGradParams;
+    fragClip = inClip;
 }
