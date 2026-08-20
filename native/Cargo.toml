@@ -2,7 +2,7 @@
 name = "wsarndr"
 version.workspace = true
 edition.workspace = true
-description = "Minecraft cross-version (1.8.9 - 1.26.2) render system — NanoVG-style immediate mode 2D + 3D world renderer, Vulkan backend"
+description = "Standalone embeddable 2D vector graphics render system — immediate mode drawing with Rust, Vulkan backend, JNI bridge"
 license.workspace = true
 
 [lib]

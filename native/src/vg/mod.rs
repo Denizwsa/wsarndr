@@ -242,8 +242,8 @@ impl VgContext {
 
         let default_uv = self
             .font_atlas
-            .uv_for_glyph(0)
-            .map_or([0.0, 0.0], |uv| [uv[0], uv[1]]);
+            .glyph_info(b'?' as u32)
+            .map_or([0.0, 0.0], |gi| [gi.u0, gi.v0]);
 
         for tri in tri_indices {
             for &i in &tri {
@@ -255,7 +255,7 @@ impl VgContext {
                 let clip_y = 1.0 - py / vh * 2.0;
                 let uv = if let Some(uv4) = shape.uv_override {
                     let cx = if i == 0 || i == 3 { uv4[0] } else { uv4[2] };
-                    let cy = if i < 2 { uv4[1] } else { uv4[3] };
+                    let cy = if i < 2 { uv4[3] } else { uv4[1] };
                     [cx, cy]
                 } else {
                     default_uv
@@ -419,15 +419,17 @@ impl VgContext {
         let color = color.into();
         let scale = size / self.font_atlas.font_size_px;
         let mut pen_x = x;
-        let (cell_w, cell_h) = self.font_atlas.glyph_dimensions();
         for ch in text.chars() {
-            if let Some(uv) = self.font_atlas.uv_for_glyph(ch as u32) {
-                let gw = cell_w as f32 * scale;
-                let gh = cell_h as f32 * scale;
+            if let Some(gi) = self.font_atlas.glyph_info(ch as u32) {
+                let gw = gi.cell_w * scale;
+                let gh = gi.cell_h * scale;
+                let dx = gi.x_offset * scale;
+                let dy = gi.y_offset * scale;
+                let uv = [gi.u0, gi.v0, gi.u1, gi.v1];
                 let shape = Shape {
                     kind: ShapeKind::Text,
-                    x: pen_x,
-                    y,
+                    x: pen_x + dx,
+                    y: y + dy,
                     w: gw,
                     h: gh,
                     fill_color: color,
@@ -436,15 +438,20 @@ impl VgContext {
                     ..Default::default()
                 };
                 self.draw_shape(&shape);
-                pen_x += gw;
+                pen_x += gi.advance * scale;
             }
         }
     }
 
     pub fn text_width(&self, text: &str, size: f32) -> f32 {
         let scale = size / self.font_atlas.font_size_px;
-        let cell_w = self.font_atlas.glyph_dimensions().0 as f32;
-        cell_w * scale * text.len() as f32
+        let mut w = 0.0f32;
+        for ch in text.chars() {
+            if let Some(gi) = self.font_atlas.glyph_info(ch as u32) {
+                w += gi.advance * scale;
+            }
+        }
+        w
     }
 
     pub fn linear_gradient_rounded_rect(

@@ -7,8 +7,21 @@ use crate::vk::{Device, SharedDevice};
 pub const ATLAS_COLS: usize = 32;
 pub const ATLAS_ROWS: usize = 8;
 pub const GLYPH_PX: usize = 16;
-pub const ATLAS_W: usize = ATLAS_COLS * GLYPH_PX;
-pub const ATLAS_H: usize = ATLAS_ROWS * GLYPH_PX;
+
+#[derive(Clone, Copy, Debug)]
+pub struct GlyphInfo {
+    pub u0: f32,
+    pub v0: f32,
+    pub u1: f32,
+    pub v1: f32,
+    pub width: f32,
+    pub height: f32,
+    pub x_offset: f32,
+    pub y_offset: f32,
+    pub advance: f32,
+    pub cell_w: f32,
+    pub cell_h: f32,
+}
 
 pub struct FontAtlas {
     pub device: SharedDevice,
@@ -18,8 +31,7 @@ pub struct FontAtlas {
     pub sampler: vk::Sampler,
     pub font: Font,
     pub font_size_px: f32,
-    glyph_w: usize,
-    glyph_h: usize,
+    glyphs: Vec<GlyphInfo>,
 }
 
 impl FontAtlas {
@@ -27,14 +39,14 @@ impl FontAtlas {
         let font = fontdue::Font::from_bytes(ttf, fontdue::FontSettings::default())
             .map_err(|e| anyhow::anyhow!("font parse error: {:?}", e))?;
 
-        // Rasterize ASCII printable range (32..=126)
-        let metrics = font.metrics('W', font_size_px);
-        let glyph_w = (metrics.advance_width.ceil() as usize + 4).max(GLYPH_PX);
-        let glyph_h = (font_size_px.ceil() as usize + 4).max(GLYPH_PX);
+        let cell_w = (font_size_px.ceil() as usize + 4).max(GLYPH_PX);
+        let cell_h = (font_size_px.ceil() as usize + 4).max(GLYPH_PX);
 
-        let atlas_w = (ATLAS_COLS * glyph_w) as u32;
-        let atlas_h = (ATLAS_ROWS * glyph_h) as u32;
+        let atlas_w = (ATLAS_COLS * cell_w) as u32;
+        let atlas_h = (ATLAS_ROWS * cell_h) as u32;
         let mut pixels = vec![0u8; atlas_w as usize * atlas_h as usize];
+
+        let mut glyphs = Vec::with_capacity(97);
 
         for (i, code) in (32u32..=126).chain(0x011E..=0x011F).enumerate() {
             let col = i % ATLAS_COLS;
@@ -43,8 +55,8 @@ impl FontAtlas {
             let (m, coverage) = font.rasterize(ch, font_size_px);
             let cw = m.width;
             let ch_px = m.height;
-            let ox = col * glyph_w + (glyph_w - cw) / 2;
-            let oy = row * glyph_h + (glyph_h - ch_px) / 2;
+            let ox = col * cell_w + (cell_w - cw) / 2;
+            let oy = row * cell_h + (cell_h - ch_px) / 2;
             for (y, line) in coverage.chunks(cw.max(1)).enumerate() {
                 for (x, &a) in line.iter().enumerate() {
                     if a > 0 && ox + x < atlas_w as usize && oy + y < atlas_h as usize {
@@ -52,17 +64,26 @@ impl FontAtlas {
                     }
                 }
             }
+            let u0 = (col * cell_w) as f32 / atlas_w as f32;
+            let v0 = (row * cell_h) as f32 / atlas_h as f32;
+            let u1 = ((col + 1) * cell_w) as f32 / atlas_w as f32;
+            let v1 = ((row + 1) * cell_h) as f32 / atlas_h as f32;
+            glyphs.push(GlyphInfo {
+                u0,
+                v0,
+                u1,
+                v1,
+                width: cw as f32,
+                height: ch_px as f32,
+                x_offset: m.xmin as f32,
+                y_offset: m.ymin as f32,
+                advance: m.advance_width,
+                cell_w: cell_w as f32,
+                cell_h: cell_h as f32,
+            });
         }
 
         let atlas = Self::create_gpu_atlas(&device, &pixels, atlas_w, atlas_h)?;
-
-        {
-            use std::io::Write;
-            let mut f = std::fs::File::create("/tmp/wsarndr_atlas.pgm").unwrap();
-            write!(f, "P5\n{} {}\n255\n", atlas_w, atlas_h).unwrap();
-            f.write_all(&pixels).unwrap();
-            log::info!("atlas dumped: {}x{} glyph_w={} glyph_h={}", atlas_w, atlas_h, glyph_w, glyph_h);
-        }
 
         Ok(Self {
             device,
@@ -72,8 +93,7 @@ impl FontAtlas {
             sampler: atlas.3,
             font,
             font_size_px,
-            glyph_w,
-            glyph_h,
+            glyphs,
         })
     }
 
@@ -155,8 +175,8 @@ impl FontAtlas {
         let sampler = unsafe {
             device.device.create_sampler(
                 &vk::SamplerCreateInfo::default()
-                    .mag_filter(vk::Filter::NEAREST)
-                    .min_filter(vk::Filter::NEAREST)
+                    .mag_filter(vk::Filter::LINEAR)
+                    .min_filter(vk::Filter::LINEAR)
                     .mipmap_mode(vk::SamplerMipmapMode::NEAREST)
                     .address_mode_u(vk::SamplerAddressMode::CLAMP_TO_EDGE)
                     .address_mode_v(vk::SamplerAddressMode::CLAMP_TO_EDGE)
@@ -174,25 +194,13 @@ impl FontAtlas {
         Ok((image, image_mem, image_view, sampler))
     }
 
-    pub fn glyph_dimensions(&self) -> (usize, usize) {
-        (self.glyph_w, self.glyph_h)
-    }
-
-    pub fn uv_for_glyph(&self, code: u32) -> Option<[f32; 4]> {
+    pub fn glyph_info(&self, code: u32) -> Option<GlyphInfo> {
         let idx = match code {
             32..=126 => (code - 32) as usize,
             0x011E..=0x011F => (code - 0x011E + 95) as usize,
             _ => return None,
         };
-        let col = idx % ATLAS_COLS;
-        let row = idx / ATLAS_COLS;
-        let atlas_w = (ATLAS_COLS * self.glyph_w) as f32;
-        let atlas_h = (ATLAS_ROWS * self.glyph_h) as f32;
-        let u0 = (col * self.glyph_w) as f32 / atlas_w;
-        let v0 = (row * self.glyph_h) as f32 / atlas_h;
-        let u1 = ((col + 1) * self.glyph_w) as f32 / atlas_w;
-        let v1 = ((row + 1) * self.glyph_h) as f32 / atlas_h;
-        Some([u0, v0, u1, v1])
+        self.glyphs.get(idx).copied()
     }
 }
 
