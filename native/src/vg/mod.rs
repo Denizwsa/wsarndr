@@ -460,28 +460,29 @@ impl VgContext {
             TextAlign::Center => x - self.text_width(text, size) * 0.5,
             TextAlign::Right => x - self.text_width(text, size),
         };
-        // y is treated as the top of the text box; baseline is top + ascent.
-        let ascent = self.font_atlas.ascent * scale;
-        let baseline = y + ascent;
         for ch in text.chars() {
             if let Some(gi) = self.font_atlas.glyph_info(ch as u32) {
                 let gw = gi.width * scale;
                 let gh = gi.height * scale;
                 let uv = [gi.u0, gi.v0, gi.u1, gi.v1];
+                // glyph is centered in its cell (off_x/off_y stored in x_offset/y_offset)
                 let gx = pen_x + gi.x_offset * scale;
-                let gy = baseline - gi.y_offset * scale - gh;
-                let shape = Shape {
-                    kind: ShapeKind::Text,
-                    x: gx,
-                    y: gy,
-                    w: gw,
-                    h: gh,
-                    fill_color: color,
-                    stroke_width: 0.0,
-                    uv_override: Some(uv),
-                    ..Default::default()
-                };
-                self.draw_shape(&shape);
+                let gy = y + gi.y_offset * scale;
+                // Empty glyphs (space) have 0 size and are not drawn, just advance.
+                if gw > 0.0 && gh > 0.0 {
+                    let shape = Shape {
+                        kind: ShapeKind::Text,
+                        x: gx,
+                        y: gy,
+                        w: gw,
+                        h: gh,
+                        fill_color: color,
+                        stroke_width: 0.0,
+                        uv_override: Some(uv),
+                        ..Default::default()
+                    };
+                    self.draw_shape(&shape);
+                }
                 pen_x += gi.advance * scale;
             }
         }
