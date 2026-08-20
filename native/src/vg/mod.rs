@@ -424,12 +424,11 @@ impl VgContext {
                 let gw = gi.cell_w * scale;
                 let gh = gi.cell_h * scale;
                 let dx = gi.x_offset * scale;
-                let dy = gi.y_offset * scale;
                 let uv = [gi.u0, gi.v0, gi.u1, gi.v1];
                 let shape = Shape {
                     kind: ShapeKind::Text,
                     x: pen_x + dx,
-                    y: y + dy,
+                    y,
                     w: gw,
                     h: gh,
                     fill_color: color,
