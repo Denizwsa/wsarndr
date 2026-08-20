@@ -477,7 +477,7 @@ impl VgContext {
                     ..Default::default()
                 };
                 self.draw_shape(&shape);
-                pen_x += gi.advance * scale;
+                pen_x += gi.cell_w * scale;
             }
         }
     }
@@ -487,7 +487,7 @@ impl VgContext {
         let mut w = 0.0f32;
         for ch in text.chars() {
             if let Some(gi) = self.font_atlas.glyph_info(ch as u32) {
-                w += gi.advance * scale;
+                w += gi.cell_w * scale;
             }
         }
         w

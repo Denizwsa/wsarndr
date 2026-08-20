@@ -55,12 +55,17 @@ impl FontAtlas {
             let (m, coverage) = font.rasterize(ch, font_size_px);
             let cw = m.width;
             let ch_px = m.height;
-            let ox = col * cell_w + (cell_w - cw) / 2;
-            let oy = row * cell_h + (cell_h - ch_px) / 2;
-            for (py, line) in coverage.chunks(cw.max(1)).enumerate() {
-                for (px, &a) in line.iter().enumerate() {
-                    if a > 0 && ox + px < atlas_w as usize && oy + py < atlas_h as usize {
-                        pixels[(oy + py) * atlas_w as usize + (ox + px)] = a;
+            // Normalize every glyph to fill its cell exactly so all characters
+            // render at a uniform size (no per-glyph stretch distortion).
+            let sx = if cell_w > 0 { cw as f32 / cell_w as f32 } else { 1.0 };
+            let sy = if cell_h > 0 { ch_px as f32 / cell_h as f32 } else { 1.0 };
+            for cy in 0..cell_h {
+                let syi = ((cy as f32 * sy) as usize).min(ch_px.max(1) - 1);
+                for cx in 0..cell_w {
+                    let sxi = ((cx as f32 * sx) as usize).min(cw.max(1) - 1);
+                    let a = coverage.get(syi * cw.max(1) + sxi).copied().unwrap_or(0);
+                    if a > 0 {
+                        pixels[(row * cell_h + cy) * atlas_w as usize + (col * cell_w + cx)] = a;
                     }
                 }
             }
