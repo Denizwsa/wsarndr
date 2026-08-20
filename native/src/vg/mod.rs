@@ -462,12 +462,18 @@ impl VgContext {
         };
         for ch in text.chars() {
             if let Some(gi) = self.font_atlas.glyph_info(ch as u32) {
-                let gw = gi.cell_w * scale;
-                let gh = gi.cell_h * scale;
+                // Use actual glyph bitmap size for the quad, centered in its
+                // advance cell. This keeps glyphs at their natural proportions
+                // while keeping uniform cursor advance.
+                let gw = gi.width * scale;
+                let gh = gi.height * scale;
+                // Center the bitmap inside the advance cell.
+                let cell_w = gi.advance * scale;
+                let cx_off = ((cell_w - gw) * 0.5).max(0.0);
                 let uv = [gi.u0, gi.v0, gi.u1, gi.v1];
                 let shape = Shape {
                     kind: ShapeKind::Text,
-                    x: pen_x,
+                    x: pen_x + cx_off,
                     y,
                     w: gw,
                     h: gh,
@@ -477,7 +483,7 @@ impl VgContext {
                     ..Default::default()
                 };
                 self.draw_shape(&shape);
-                pen_x += gi.cell_w * scale;
+                pen_x += gi.advance * scale;
             }
         }
     }
@@ -487,7 +493,7 @@ impl VgContext {
         let mut w = 0.0f32;
         for ch in text.chars() {
             if let Some(gi) = self.font_atlas.glyph_info(ch as u32) {
-                w += gi.cell_w * scale;
+                w += gi.advance * scale;
             }
         }
         w

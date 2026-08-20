@@ -1,4 +1,3 @@
-
 use ash::vk;
 use fontdue::Font;
 
@@ -39,11 +38,8 @@ impl FontAtlas {
         let font = fontdue::Font::from_bytes(ttf, fontdue::FontSettings::default())
             .map_err(|e| anyhow::anyhow!("font parse error: {:?}", e))?;
 
-        let cell_w = (font_size_px.ceil() as usize + 2).max(GLYPH_PX);
-        let cell_h = (font_size_px.ceil() as usize + 2).max(GLYPH_PX);
-        // Inner region (1px transparent border per side) holds the normalized glyph.
-        let inner_w = cell_w - 2;
-        let inner_h = cell_h - 2;
+        let cell_w = (font_size_px.ceil() as usize + 4).max(GLYPH_PX);
+        let cell_h = (font_size_px.ceil() as usize + 4).max(GLYPH_PX);
 
         let atlas_w = (ATLAS_COLS * cell_w) as u32;
         let atlas_h = (ATLAS_ROWS * cell_h) as u32;
@@ -58,28 +54,20 @@ impl FontAtlas {
             let (m, coverage) = font.rasterize(ch, font_size_px);
             let cw = m.width;
             let ch_px = m.height;
-            // Normalize every glyph to fill the inner cell region so all
-            // characters render at a uniform size with no per-glyph distortion.
-            let sx = if inner_w > 0 { cw as f32 / inner_w as f32 } else { 1.0 };
-            let sy = if inner_h > 0 { ch_px as f32 / inner_h as f32 } else { 1.0 };
-            let base_x = col * cell_w + 1;
-            let base_y = row * cell_h + 1;
-            for cy in 0..inner_h {
-                let syi = ((cy as f32 * sy) as usize).min(ch_px.max(1) - 1);
-                for cx in 0..inner_w {
-                    let sxi = ((cx as f32 * sx) as usize).min(cw.max(1) - 1);
-                    let a = coverage.get(syi * cw.max(1) + sxi).copied().unwrap_or(0);
-                    if a > 0 {
-                        pixels[(base_y + cy) * atlas_w as usize + (base_x + cx)] = a;
+            let ox = col * cell_w + (cell_w - cw) / 2;
+            let oy = row * cell_h + (cell_h - ch_px) / 2;
+            for (py, line) in coverage.chunks(cw.max(1)).enumerate() {
+                for (px, &a) in line.iter().enumerate() {
+                    if a > 0 && ox + px < atlas_w as usize && oy + py < atlas_h as usize {
+                        pixels[(oy + py) * atlas_w as usize + (ox + px)] = a;
                     }
                 }
             }
-            // UV covers the full cell (including 1px border) to avoid LINEAR
-            // filtering bleeding from neighbouring glyphs.
-            let u0 = (col * cell_w) as f32 / atlas_w as f32;
-            let v0 = (row * cell_h) as f32 / atlas_h as f32;
-            let u1 = ((col + 1) * cell_w) as f32 / atlas_w as f32;
-            let v1 = ((row + 1) * cell_h) as f32 / atlas_h as f32;
+            // Sub-rect UV covering only the actual glyph pixels within the cell
+            let u0 = ox as f32 / atlas_w as f32;
+            let v0 = oy as f32 / atlas_h as f32;
+            let u1 = (ox + cw) as f32 / atlas_w as f32;
+            let v1 = (oy + ch_px) as f32 / atlas_h as f32;
             glyphs.push(GlyphInfo {
                 u0,
                 v0,
@@ -90,8 +78,8 @@ impl FontAtlas {
                 x_offset: m.xmin as f32,
                 y_offset: m.ymin as f32,
                 advance: m.advance_width,
-                cell_w: inner_w as f32,
-                cell_h: inner_h as f32,
+                cell_w: cell_w as f32,
+                cell_h: cell_h as f32,
             });
         }
 

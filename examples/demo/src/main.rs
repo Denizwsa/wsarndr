@@ -116,21 +116,6 @@ impl ApplicationHandler for App {
                     vg.rect_fill(w * 0.5 - tw / 2.0 - 6.0 * s, h * 0.6 - 2.0 * s, tw + 12.0 * s, 26.0 * s, Color::argb(0xAA45475A));
                     vg.text(w * 0.5 - tw / 2.0, h * 0.6, txt, 20.0 * s, Color::argb(0xFFA6ADC8));
 
-                    // New features demo: triangle, arc, transform stack
-                    // Triangle (arrow indicator)
-                    let tri_x = w * 0.6;
-                    let tri_y = h * 0.15;
-                    vg.triangle_fill(
-                        tri_x, tri_y,
-                        tri_x + 40.0 * s, tri_y + 20.0 * s,
-                        tri_x, tri_y + 40.0 * s,
-                        Color::argb(0xFFA6E3A1),
-                    );
-
-                    // Arc (health indicator)
-                    vg.arc_fill(w * 0.85, h * 0.6, 30.0 * s, 0.0, 270.0, Color::argb(0xFFF9E2AF));
-                    vg.arc_stroke(w * 0.85, h * 0.6, 30.0 * s, 0.0, 270.0, 2.0 * s, Color::argb(0xFF89B4FA));
-
                     // Transform stack demo
                     vg.push_translate(w * 0.15, h * 0.5);
                     vg.rounded_rect_fill(0.0, 0.0, 100.0 * s, 30.0 * s, 4.0 * s, Color::argb(0x882A2A3C));
