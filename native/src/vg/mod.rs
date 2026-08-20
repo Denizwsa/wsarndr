@@ -460,21 +460,20 @@ impl VgContext {
             TextAlign::Center => x - self.text_width(text, size) * 0.5,
             TextAlign::Right => x - self.text_width(text, size),
         };
+        // y is treated as the top of the text box; baseline is top + ascent.
+        let ascent = self.font_atlas.ascent * scale;
+        let baseline = y + ascent;
         for ch in text.chars() {
             if let Some(gi) = self.font_atlas.glyph_info(ch as u32) {
-                // Use actual glyph bitmap size for the quad, centered in its
-                // advance cell. This keeps glyphs at their natural proportions
-                // while keeping uniform cursor advance.
                 let gw = gi.width * scale;
                 let gh = gi.height * scale;
-                // Center the bitmap inside the advance cell.
-                let cell_w = gi.advance * scale;
-                let cx_off = ((cell_w - gw) * 0.5).max(0.0);
                 let uv = [gi.u0, gi.v0, gi.u1, gi.v1];
+                let gx = pen_x + gi.x_offset * scale;
+                let gy = baseline - gi.y_offset * scale - gh;
                 let shape = Shape {
                     kind: ShapeKind::Text,
-                    x: pen_x + cx_off,
-                    y,
+                    x: gx,
+                    y: gy,
                     w: gw,
                     h: gh,
                     fill_color: color,

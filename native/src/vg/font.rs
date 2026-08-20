@@ -30,6 +30,7 @@ pub struct FontAtlas {
     pub sampler: vk::Sampler,
     pub font: Font,
     pub font_size_px: f32,
+    pub ascent: f32,
     glyphs: Vec<GlyphInfo>,
 }
 
@@ -37,6 +38,11 @@ impl FontAtlas {
     pub fn load(device: SharedDevice, ttf: &[u8], font_size_px: f32) -> anyhow::Result<Self> {
         let font = fontdue::Font::from_bytes(ttf, fontdue::FontSettings::default())
             .map_err(|e| anyhow::anyhow!("font parse error: {:?}", e))?;
+
+        let ascent = font
+            .horizontal_line_metrics(font_size_px)
+            .map(|m| m.ascent)
+            .unwrap_or(font_size_px * 0.82);
 
         let cell_w = (font_size_px.ceil() as usize + 4).max(GLYPH_PX);
         let cell_h = (font_size_px.ceil() as usize + 4).max(GLYPH_PX);
@@ -93,6 +99,7 @@ impl FontAtlas {
             sampler: atlas.3,
             font,
             font_size_px,
+            ascent,
             glyphs,
         })
     }
