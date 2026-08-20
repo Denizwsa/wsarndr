@@ -4,7 +4,7 @@ use ash::vk;
 use std::sync::Mutex;
 
 use crate::vg::font::FontAtlas;
-use crate::vg::shape::Color;
+use crate::vg::shape::{Color, TextAlign};
 use crate::vg::VgContext;
 use crate::vk::{Instance, Swapchain, SharedDevice, SharedInstance};
 
@@ -54,8 +54,10 @@ pub enum UiCommand {
     RoundedRect(f32, f32, f32, f32, f32, Color),
     RectStroke(f32, f32, f32, f32, f32, Color),
     Circle(f32, f32, f32, Color),
+    CircleStroke(f32, f32, f32, f32, Color),
     Line(f32, f32, f32, f32, f32, Color),
     Text(f32, f32, String, f32, Color),
+    TextAligned(f32, f32, String, f32, Color, TextAlign),
     LinearGradient {
         x: f32,
         y: f32,
@@ -67,6 +69,12 @@ pub enum UiCommand {
         c0: Color,
         c1: Color,
     },
+    Triangle(f32, f32, f32, f32, f32, f32, Color),
+    TriangleStroke(f32, f32, f32, f32, f32, f32, f32, Color),
+    Arc(f32, f32, f32, f32, f32, Color),
+    ArcStroke(f32, f32, f32, f32, f32, f32, Color),
+    PushTranslate(f32, f32),
+    PopTransform,
 }
 
 impl Renderer {
@@ -178,6 +186,12 @@ impl Renderer {
         }
     }
 
+    pub fn queue_text_aligned(&self, x: f32, y: f32, text: &str, size: f32, color: Color, align: TextAlign) {
+        if let Ok(mut q) = self.ui_queue.lock() {
+            q.push(UiCommand::TextAligned(x, y, text.to_string(), size, color, align));
+        }
+    }
+
     pub fn queue_linear_gradient(
         &self,
         x: f32, y: f32, w: f32, h: f32, r: f32,
@@ -188,6 +202,48 @@ impl Renderer {
     ) {
         if let Ok(mut q) = self.ui_queue.lock() {
             q.push(UiCommand::LinearGradient { x, y, w, h, r, from, to, c0, c1 });
+        }
+    }
+
+    pub fn queue_circle_stroke(&self, cx: f32, cy: f32, r: f32, width: f32, color: Color) {
+        if let Ok(mut q) = self.ui_queue.lock() {
+            q.push(UiCommand::CircleStroke(cx, cy, r, width, color));
+        }
+    }
+
+    pub fn queue_triangle(&self, x1: f32, y1: f32, x2: f32, y2: f32, x3: f32, y3: f32, color: Color) {
+        if let Ok(mut q) = self.ui_queue.lock() {
+            q.push(UiCommand::Triangle(x1, y1, x2, y2, x3, y3, color));
+        }
+    }
+
+    pub fn queue_triangle_stroke(&self, x1: f32, y1: f32, x2: f32, y2: f32, x3: f32, y3: f32, width: f32, color: Color) {
+        if let Ok(mut q) = self.ui_queue.lock() {
+            q.push(UiCommand::TriangleStroke(x1, y1, x2, y2, x3, y3, width, color));
+        }
+    }
+
+    pub fn queue_arc(&self, cx: f32, cy: f32, r: f32, start_deg: f32, sweep_deg: f32, color: Color) {
+        if let Ok(mut q) = self.ui_queue.lock() {
+            q.push(UiCommand::Arc(cx, cy, r, start_deg, sweep_deg, color));
+        }
+    }
+
+    pub fn queue_arc_stroke(&self, cx: f32, cy: f32, r: f32, start_deg: f32, sweep_deg: f32, width: f32, color: Color) {
+        if let Ok(mut q) = self.ui_queue.lock() {
+            q.push(UiCommand::ArcStroke(cx, cy, r, start_deg, sweep_deg, width, color));
+        }
+    }
+
+    pub fn queue_push_translate(&self, tx: f32, ty: f32) {
+        if let Ok(mut q) = self.ui_queue.lock() {
+            q.push(UiCommand::PushTranslate(tx, ty));
+        }
+    }
+
+    pub fn queue_pop_transform(&self) {
+        if let Ok(mut q) = self.ui_queue.lock() {
+            q.push(UiCommand::PopTransform);
         }
     }
 
@@ -211,11 +267,19 @@ impl Renderer {
                     UiCommand::RoundedRect(x, y, w, h, r, c) => vg.rounded_rect_fill(x, y, w, h, r, c),
                     UiCommand::RectStroke(x, y, w, h, s, c) => vg.rect_stroke(x, y, w, h, s, c),
                     UiCommand::Circle(cx, cy, r, c) => vg.circle_fill(cx, cy, r, c),
+                    UiCommand::CircleStroke(cx, cy, r, w, c) => vg.circle_stroke(cx, cy, r, w, c),
                     UiCommand::Line(x0, y0, x1, y1, w, c) => vg.line(x0, y0, x1, y1, w, c),
                     UiCommand::Text(x, y, s, size, c) => vg.text(x, y, &s, size, c),
+                    UiCommand::TextAligned(x, y, s, size, c, align) => vg.text_aligned(x, y, &s, size, c, align),
                     UiCommand::LinearGradient { x, y, w, h, r, from, to, c0, c1 } => {
                         vg.linear_gradient_rounded_rect(x, y, w, h, r, from, to, c0, c1)
                     }
+                    UiCommand::Triangle(x1, y1, x2, y2, x3, y3, c) => vg.triangle_fill(x1, y1, x2, y2, x3, y3, c),
+                    UiCommand::TriangleStroke(x1, y1, x2, y2, x3, y3, w, c) => vg.triangle_stroke(x1, y1, x2, y2, x3, y3, w, c),
+                    UiCommand::Arc(cx, cy, r, start, sweep, c) => vg.arc_fill(cx, cy, r, start, sweep, c),
+                    UiCommand::ArcStroke(cx, cy, r, start, sweep, w, c) => vg.arc_stroke(cx, cy, r, start, sweep, w, c),
+                    UiCommand::PushTranslate(tx, ty) => vg.push_translate(tx, ty),
+                    UiCommand::PopTransform => vg.pop_transform(),
                 }
             }
         }

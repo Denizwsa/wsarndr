@@ -4,12 +4,27 @@ pub enum ShapeKind {
     RoundedRect { radius: f32 },
     Circle,
     Line { x1: f32, y1: f32 },
+    Triangle { x2: f32, y2: f32, x3: f32, y3: f32 },
+    Arc { start: f32, sweep: f32 },
     Text,
 }
 
 impl Default for ShapeKind {
     fn default() -> Self {
         ShapeKind::Rect
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum TextAlign {
+    Left,
+    Center,
+    Right,
+}
+
+impl Default for TextAlign {
+    fn default() -> Self {
+        TextAlign::Left
     }
 }
 

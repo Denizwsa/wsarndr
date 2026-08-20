@@ -7,7 +7,7 @@ use bytemuck::{Pod, Zeroable};
 
 use crate::vk::{Device, Instance, SharedDevice, SharedInstance};
 use crate::vg::font::FontAtlas;
-use crate::vg::shape::{Color, GradMode, Shape, ShapeKind};
+use crate::vg::shape::{Color, GradMode, Shape, ShapeKind, TextAlign};
 
 #[repr(C)]
 #[derive(Clone, Copy, Pod, Zeroable, Debug)]
@@ -52,6 +52,8 @@ pub struct VgContext {
     pub viewport_size: [f32; 2],
     pub scale: f32,
     pub needs_upload: bool,
+    pub translate: [f32; 2],
+    pub transform_stack: Vec<[f32; 2]>,
 }
 
 impl VgContext {
@@ -105,6 +107,8 @@ impl VgContext {
             viewport_size: [0.0, 0.0],
             scale: 1.0,
             needs_upload: false,
+            translate: [0.0, 0.0],
+            transform_stack: Vec::new(),
         })
     }
 
@@ -113,6 +117,8 @@ impl VgContext {
         self.scale = scale;
         self.vertices.clear();
         self.needs_upload = false;
+        self.translate = [0.0, 0.0];
+        self.transform_stack.clear();
     }
 
     pub fn upload(&mut self, device: &Device) -> anyhow::Result<()> {
@@ -222,6 +228,16 @@ impl VgContext {
                 shape.stroke_width,
                 if shape.stroke_width > 0.0 { FLAG_STROKE } else { 0.0 },
             ),
+            ShapeKind::Triangle { .. } => (
+                0.0,
+                shape.stroke_width,
+                if shape.stroke_width > 0.0 { FLAG_STROKE } else { 0.0 },
+            ),
+            ShapeKind::Arc { .. } => (
+                half.max(0.001),
+                shape.stroke_width,
+                if shape.stroke_width > 0.0 { FLAG_STROKE } else { 0.0 },
+            ),
             ShapeKind::Line { .. } => (
                 shape.stroke_width * 0.5 + 0.5,
                 shape.stroke_width,
@@ -296,6 +312,7 @@ impl VgContext {
         r: f32,
         color: impl Into<Color>,
     ) {
+        let (x, y) = self.apply(x, y);
         self.draw_shape(&Shape {
             kind: ShapeKind::RoundedRect { radius: r },
             x,
@@ -318,6 +335,7 @@ impl VgContext {
         width: f32,
         color: impl Into<Color>,
     ) {
+        let (x, y) = self.apply(x, y);
         self.draw_shape(&Shape {
             kind: ShapeKind::RoundedRect { radius: r },
             x,
@@ -331,6 +349,7 @@ impl VgContext {
     }
 
     pub fn rect_fill(&mut self, x: f32, y: f32, w: f32, h: f32, color: impl Into<Color>) {
+        let (x, y) = self.apply(x, y);
         self.draw_shape(&Shape {
             kind: ShapeKind::Rect,
             x,
@@ -352,6 +371,7 @@ impl VgContext {
         width: f32,
         color: impl Into<Color>,
     ) {
+        let (x, y) = self.apply(x, y);
         self.draw_shape(&Shape {
             kind: ShapeKind::Rect,
             x,
@@ -365,6 +385,7 @@ impl VgContext {
     }
 
     pub fn circle_fill(&mut self, cx: f32, cy: f32, r: f32, color: impl Into<Color>) {
+        let (cx, cy) = self.apply(cx, cy);
         self.draw_shape(&Shape {
             kind: ShapeKind::Circle,
             x: cx - r,
@@ -385,6 +406,7 @@ impl VgContext {
         width: f32,
         color: impl Into<Color>,
     ) {
+        let (cx, cy) = self.apply(cx, cy);
         self.draw_shape(&Shape {
             kind: ShapeKind::Circle,
             x: cx - r,
@@ -398,6 +420,8 @@ impl VgContext {
     }
 
     pub fn line(&mut self, x0: f32, y0: f32, x1: f32, y1: f32, width: f32, color: impl Into<Color>) {
+        let (x0, y0) = self.apply(x0, y0);
+        let (x1, y1) = self.apply(x1, y1);
         let d = ((x1 - x0).powi(2) + (y1 - y0).powi(2)).sqrt();
         let pad = width * 0.5 + 2.0;
         let nx = if d > 0.0 { -(y1 - y0) / d } else { 1.0 };
@@ -416,18 +440,34 @@ impl VgContext {
     }
 
     pub fn text(&mut self, x: f32, y: f32, text: &str, size: f32, color: impl Into<Color>) {
+        self.text_aligned(x, y, text, size, color, TextAlign::Left);
+    }
+
+    pub fn text_aligned(
+        &mut self,
+        x: f32,
+        y: f32,
+        text: &str,
+        size: f32,
+        color: impl Into<Color>,
+        align: TextAlign,
+    ) {
         let color = color.into();
         let scale = size / self.font_atlas.font_size_px;
-        let mut pen_x = x;
+        let (x, y) = self.apply(x, y);
+        let mut pen_x = match align {
+            TextAlign::Left => x,
+            TextAlign::Center => x - self.text_width(text, size) * 0.5,
+            TextAlign::Right => x - self.text_width(text, size),
+        };
         for ch in text.chars() {
             if let Some(gi) = self.font_atlas.glyph_info(ch as u32) {
                 let gw = gi.cell_w * scale;
                 let gh = gi.cell_h * scale;
-                let dx = gi.x_offset * scale;
                 let uv = [gi.u0, gi.v0, gi.u1, gi.v1];
                 let shape = Shape {
                     kind: ShapeKind::Text,
-                    x: pen_x + dx,
+                    x: pen_x,
                     y,
                     w: gw,
                     h: gh,
@@ -453,6 +493,139 @@ impl VgContext {
         w
     }
 
+    /// Returns (width, height) for the given text at the specified size.
+    pub fn measure_text(&self, text: &str, size: f32) -> (f32, f32) {
+        let scale = size / self.font_atlas.font_size_px;
+        let cell_h = self.font_atlas.glyph_info(b'X' as u32)
+            .map_or(size, |gi| gi.cell_h * scale);
+        (self.text_width(text, size), cell_h)
+    }
+
+    // ---- Coordinate transform stack ----
+
+    /// Push a translate transform. All subsequent draws are offset by (tx, ty).
+    pub fn push_translate(&mut self, tx: f32, ty: f32) {
+        self.transform_stack.push(self.translate);
+        self.translate[0] += tx;
+        self.translate[1] += ty;
+    }
+
+    /// Pop the last transform.
+    pub fn pop_transform(&mut self) {
+        if let Some(prev) = self.transform_stack.pop() {
+            self.translate = prev;
+        }
+    }
+
+    /// Apply current transform to coordinates.
+    fn apply(&self, x: f32, y: f32) -> (f32, f32) {
+        (x + self.translate[0], y + self.translate[1])
+    }
+
+    // ---- Triangle ----
+
+    pub fn triangle_fill(
+        &mut self,
+        x1: f32, y1: f32,
+        x2: f32, y2: f32,
+        x3: f32, y3: f32,
+        color: impl Into<Color>,
+    ) {
+        let (x1, y1) = self.apply(x1, y1);
+        let (x2, y2) = self.apply(x2, y2);
+        let (x3, y3) = self.apply(x3, y3);
+        let min_x = x1.min(x2).min(x3);
+        let min_y = y1.min(y2).min(y3);
+        let max_x = x1.max(x2).max(x3);
+        let max_y = y1.max(y2).max(y3);
+        self.draw_shape(&Shape {
+            kind: ShapeKind::Triangle { x2, y2, x3, y3 },
+            x: min_x,
+            y: min_y,
+            w: (max_x - min_x).max(0.1),
+            h: (max_y - min_y).max(0.1),
+            fill_color: color.into(),
+            stroke_width: 0.0,
+            _line_n: [x1, y1],
+            ..Default::default()
+        });
+    }
+
+    pub fn triangle_stroke(
+        &mut self,
+        x1: f32, y1: f32,
+        x2: f32, y2: f32,
+        x3: f32, y3: f32,
+        width: f32,
+        color: impl Into<Color>,
+    ) {
+        let (x1, y1) = self.apply(x1, y1);
+        let (x2, y2) = self.apply(x2, y2);
+        let (x3, y3) = self.apply(x3, y3);
+        let min_x = x1.min(x2).min(x3);
+        let min_y = y1.min(y2).min(y3);
+        let max_x = x1.max(x2).max(x3);
+        let max_y = y1.max(y2).max(y3);
+        self.draw_shape(&Shape {
+            kind: ShapeKind::Triangle { x2, y2, x3, y3 },
+            x: min_x,
+            y: min_y,
+            w: (max_x - min_x).max(0.1),
+            h: (max_y - min_y).max(0.1),
+            fill_color: color.into(),
+            stroke_width: width,
+            _line_n: [x1, y1],
+            ..Default::default()
+        });
+    }
+
+    // ---- Arc (partial circle / pie slice) ----
+
+    pub fn arc_fill(
+        &mut self,
+        cx: f32, cy: f32,
+        r: f32,
+        start_deg: f32,
+        sweep_deg: f32,
+        color: impl Into<Color>,
+    ) {
+        let (cx, cy) = self.apply(cx, cy);
+        self.draw_shape(&Shape {
+            kind: ShapeKind::Arc { start: start_deg.to_radians(), sweep: sweep_deg.to_radians() },
+            x: cx - r,
+            y: cy - r,
+            w: r * 2.0,
+            h: r * 2.0,
+            fill_color: color.into(),
+            stroke_width: 0.0,
+            _line_n: [cx, cy],
+            ..Default::default()
+        });
+    }
+
+    pub fn arc_stroke(
+        &mut self,
+        cx: f32, cy: f32,
+        r: f32,
+        start_deg: f32,
+        sweep_deg: f32,
+        width: f32,
+        color: impl Into<Color>,
+    ) {
+        let (cx, cy) = self.apply(cx, cy);
+        self.draw_shape(&Shape {
+            kind: ShapeKind::Arc { start: start_deg.to_radians(), sweep: sweep_deg.to_radians() },
+            x: cx - r,
+            y: cy - r,
+            w: r * 2.0,
+            h: r * 2.0,
+            fill_color: color.into(),
+            stroke_width: width,
+            _line_n: [cx, cy],
+            ..Default::default()
+        });
+    }
+
     pub fn linear_gradient_rounded_rect(
         &mut self,
         x: f32,
@@ -465,6 +638,9 @@ impl VgContext {
         c0: Color,
         c1: Color,
     ) {
+        let (x, y) = self.apply(x, y);
+        let (fx, fy) = self.apply(from[0], from[1]);
+        let (tx, ty) = self.apply(to[0], to[1]);
         self.draw_shape(&Shape {
             kind: ShapeKind::RoundedRect { radius: r },
             x,
@@ -474,14 +650,15 @@ impl VgContext {
             fill_color: c0,
             grad_color: c1,
             grad_mode: GradMode::Linear,
-            grad_from: from,
-            grad_to: to,
+            grad_from: [fx, fy],
+            grad_to: [tx, ty],
             stroke_width: 0.0,
             ..Default::default()
         });
     }
 
     pub fn radial_gradient_circle(&mut self, cx: f32, cy: f32, r: f32, c0: Color, c1: Color) {
+        let (cx, cy) = self.apply(cx, cy);
         self.draw_shape(&Shape {
             kind: ShapeKind::Circle,
             x: cx - r,

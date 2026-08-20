@@ -7,7 +7,7 @@ use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop};
 use winit::window::{Window, WindowId};
 
 use wsarndr::renderer::Renderer;
-use wsarndr::vg::shape::Color;
+use wsarndr::vg::shape::{Color, TextAlign};
 
 struct App {
     window: Option<Window>,
@@ -81,7 +81,7 @@ impl ApplicationHandler for App {
 
                     // Module list
                     let mut y = py + header_h + 12.0 * s;
-                    for (_i, m) in ["KillAura", "Scaffold", "Speed", "AntiCheat"].iter().enumerate() {
+                    for m in ["KillAura", "Scaffold", "Speed", "AntiCheat"].iter() {
                         let row_h = 18.0 * s;
                         let width = vg.text_width(m, 13.0 * s) + 20.0 * s;
                         let color = Color::argb(0x882A2A3C);
@@ -115,6 +115,31 @@ impl ApplicationHandler for App {
                     let tw = vg.text_width(txt, 20.0 * s);
                     vg.rect_fill(w * 0.5 - tw / 2.0 - 6.0 * s, h * 0.6 - 2.0 * s, tw + 12.0 * s, 26.0 * s, Color::argb(0xAA45475A));
                     vg.text(w * 0.5 - tw / 2.0, h * 0.6, txt, 20.0 * s, Color::argb(0xFFA6ADC8));
+
+                    // New features demo: triangle, arc, transform stack
+                    // Triangle (arrow indicator)
+                    let tri_x = w * 0.6;
+                    let tri_y = h * 0.15;
+                    vg.triangle_fill(
+                        tri_x, tri_y,
+                        tri_x + 40.0 * s, tri_y + 20.0 * s,
+                        tri_x, tri_y + 40.0 * s,
+                        Color::argb(0xFFA6E3A1),
+                    );
+
+                    // Arc (health indicator)
+                    vg.arc_fill(w * 0.85, h * 0.6, 30.0 * s, 0.0, 270.0, Color::argb(0xFFF9E2AF));
+                    vg.arc_stroke(w * 0.85, h * 0.6, 30.0 * s, 0.0, 270.0, 2.0 * s, Color::argb(0xFF89B4FA));
+
+                    // Transform stack demo
+                    vg.push_translate(w * 0.15, h * 0.5);
+                    vg.rounded_rect_fill(0.0, 0.0, 100.0 * s, 30.0 * s, 4.0 * s, Color::argb(0x882A2A3C));
+                    vg.text_aligned(50.0 * s, 6.0 * s, "Translated", 12.0 * s, Color::argb(0xFFCDD6F4), TextAlign::Center);
+                    vg.pop_transform();
+
+                    // Text alignment demo
+                    vg.text_aligned(w * 0.5, h * 0.92, "Centered text", 14.0 * s, Color::argb(0xFF89B4FA), TextAlign::Center);
+                    vg.text_aligned(w * 0.85, h * 0.88, "Right", 14.0 * s, Color::argb(0xFFA6E3A1), TextAlign::Right);
                 });
 
                 if result.is_ok() {

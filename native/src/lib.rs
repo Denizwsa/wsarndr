@@ -14,7 +14,7 @@ use raw_window_handle::{
 };
 
 use crate::renderer::{Renderer, WindowSizeProvider};
-use crate::vg::shape::Color;
+use crate::vg::shape::{Color, TextAlign};
 
 /// Thread-safe handle: JNI calls only add vertices outside of render.
 #[derive(Clone)]
@@ -356,4 +356,160 @@ fn _unused_jni_signatures(
     _text: jstring,
     _n: jint,
 ) {
+}
+
+// ---- Extended API for modders ----
+
+#[no_mangle]
+pub unsafe extern "system" fn Java_dev_wsarndr_Native_textAligned(
+    mut env: JNIEnv,
+    _class: JClass,
+    ptr: jlong,
+    x: jfloat,
+    y: jfloat,
+    text: JString,
+    size: jfloat,
+    argb: jint,
+    align: jint,
+) {
+    let h = match handle(&mut env, ptr) {
+        Some(h) => h,
+        None => return,
+    };
+    let s: String = env
+        .get_string(&text)
+        .map(|j| j.into())
+        .unwrap_or_default();
+    let align = match align {
+        1 => TextAlign::Center,
+        2 => TextAlign::Right,
+        _ => TextAlign::Left,
+    };
+    h.0.lock().unwrap().queue_text_aligned(x, y, &s, size, Color::argb(argb as u32), align);
+}
+
+#[no_mangle]
+pub unsafe extern "system" fn Java_dev_wsarndr_Native_circleStroke(
+    mut env: JNIEnv,
+    _class: JClass,
+    ptr: jlong,
+    cx: jfloat,
+    cy: jfloat,
+    r: jfloat,
+    width: jfloat,
+    argb: jint,
+) {
+    let rh = match handle(&mut env, ptr) {
+        Some(h) => h,
+        None => return,
+    };
+    rh.0.lock().unwrap().queue_circle_stroke(cx, cy, r, width, Color::argb(argb as u32));
+}
+
+#[no_mangle]
+pub unsafe extern "system" fn Java_dev_wsarndr_Native_triangle(
+    mut env: JNIEnv,
+    _class: JClass,
+    ptr: jlong,
+    x1: jfloat,
+    y1: jfloat,
+    x2: jfloat,
+    y2: jfloat,
+    x3: jfloat,
+    y3: jfloat,
+    argb: jint,
+) {
+    let rh = match handle(&mut env, ptr) {
+        Some(h) => h,
+        None => return,
+    };
+    rh.0.lock().unwrap().queue_triangle(x1, y1, x2, y2, x3, y3, Color::argb(argb as u32));
+}
+
+#[no_mangle]
+pub unsafe extern "system" fn Java_dev_wsarndr_Native_triangleStroke(
+    mut env: JNIEnv,
+    _class: JClass,
+    ptr: jlong,
+    x1: jfloat,
+    y1: jfloat,
+    x2: jfloat,
+    y2: jfloat,
+    x3: jfloat,
+    y3: jfloat,
+    width: jfloat,
+    argb: jint,
+) {
+    let rh = match handle(&mut env, ptr) {
+        Some(h) => h,
+        None => return,
+    };
+    rh.0.lock().unwrap().queue_triangle_stroke(x1, y1, x2, y2, x3, y3, width, Color::argb(argb as u32));
+}
+
+#[no_mangle]
+pub unsafe extern "system" fn Java_dev_wsarndr_Native_arc(
+    mut env: JNIEnv,
+    _class: JClass,
+    ptr: jlong,
+    cx: jfloat,
+    cy: jfloat,
+    r: jfloat,
+    start_deg: jfloat,
+    sweep_deg: jfloat,
+    argb: jint,
+) {
+    let rh = match handle(&mut env, ptr) {
+        Some(h) => h,
+        None => return,
+    };
+    rh.0.lock().unwrap().queue_arc(cx, cy, r, start_deg, sweep_deg, Color::argb(argb as u32));
+}
+
+#[no_mangle]
+pub unsafe extern "system" fn Java_dev_wsarndr_Native_arcStroke(
+    mut env: JNIEnv,
+    _class: JClass,
+    ptr: jlong,
+    cx: jfloat,
+    cy: jfloat,
+    r: jfloat,
+    start_deg: jfloat,
+    sweep_deg: jfloat,
+    width: jfloat,
+    argb: jint,
+) {
+    let rh = match handle(&mut env, ptr) {
+        Some(h) => h,
+        None => return,
+    };
+    rh.0.lock().unwrap().queue_arc_stroke(cx, cy, r, start_deg, sweep_deg, width, Color::argb(argb as u32));
+}
+
+#[no_mangle]
+pub unsafe extern "system" fn Java_dev_wsarndr_Native_pushTranslate(
+    mut env: JNIEnv,
+    _class: JClass,
+    ptr: jlong,
+    tx: jfloat,
+    ty: jfloat,
+) {
+    let rh = match handle(&mut env, ptr) {
+        Some(h) => h,
+        None => return,
+    };
+    rh.0.lock().unwrap().queue_push_translate(tx, ty);
+}
+
+#[no_mangle]
+pub unsafe extern "system" fn Java_dev_wsarndr_Native_popTransform(
+    mut env: JNIEnv,
+    _class: JClass,
+    ptr: jlong,
+) {
+    let rh = match handle(&mut env, ptr) {
+        Some(h) => h,
+        None => return,
+    };
+    rh.0.lock().unwrap().queue_pop_transform();
 }

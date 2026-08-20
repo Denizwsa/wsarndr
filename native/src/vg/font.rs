@@ -57,10 +57,10 @@ impl FontAtlas {
             let ch_px = m.height;
             let ox = col * cell_w + (cell_w - cw) / 2;
             let oy = row * cell_h + (cell_h - ch_px) / 2;
-            for (y, line) in coverage.chunks(cw.max(1)).enumerate() {
-                for (x, &a) in line.iter().enumerate() {
-                    if a > 0 && ox + x < atlas_w as usize && oy + y < atlas_h as usize {
-                        pixels[(oy + y) * atlas_w as usize + (ox + x)] = a;
+            for (py, line) in coverage.chunks(cw.max(1)).enumerate() {
+                for (px, &a) in line.iter().enumerate() {
+                    if a > 0 && ox + px < atlas_w as usize && oy + py < atlas_h as usize {
+                        pixels[(oy + py) * atlas_w as usize + (ox + px)] = a;
                     }
                 }
             }

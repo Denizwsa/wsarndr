@@ -82,4 +82,35 @@ public final class Native {
     public static native void linearGradient(long ptr, float x, float y, float w, float h, float radius,
                                              float fromX, float fromY, float toX, float toY,
                                              int c0, int c1);
+
+    /* ---- Extended API for modders ---- */
+
+    /** Text alignment constants. */
+    public static final int ALIGN_LEFT = 0;
+    public static final int ALIGN_CENTER = 1;
+    public static final int ALIGN_RIGHT = 2;
+
+    /** Draw text with alignment (0=left, 1=center, 2=right). */
+    public static native void textAligned(long ptr, float x, float y, String text, float size, int argb, int align);
+
+    /** Draw a circle outline. */
+    public static native void circleStroke(long ptr, float cx, float cy, float r, float width, int argb);
+
+    /** Draw a filled triangle. */
+    public static native void triangle(long ptr, float x1, float y1, float x2, float y2, float x3, float y3, int argb);
+
+    /** Draw a triangle outline. */
+    public static native void triangleStroke(long ptr, float x1, float y1, float x2, float y2, float x3, float y3, float width, int argb);
+
+    /** Draw a filled arc (partial circle). Angles in degrees. */
+    public static native void arc(long ptr, float cx, float cy, float r, float startDeg, float sweepDeg, int argb);
+
+    /** Draw an arc outline. Angles in degrees. */
+    public static native void arcStroke(long ptr, float cx, float cy, float r, float startDeg, float sweepDeg, float width, int argb);
+
+    /** Push a translate transform. All subsequent draws are offset by (tx, ty). */
+    public static native void pushTranslate(long ptr, float tx, float ty);
+
+    /** Pop the last transform. */
+    public static native void popTransform(long ptr);
 }
