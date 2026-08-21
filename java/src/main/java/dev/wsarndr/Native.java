@@ -178,4 +178,60 @@ public final class Native {
         }
         return (0xFF << 24) | ((int)(r*255) << 16) | ((int)(g*255) << 8) | (int)(b*255);
     }
+
+    /** Create ARGB from 0-255 RGB. */
+    public static int rgb(int r, int g, int b) { return (0xFF << 24) | ((r & 0xFF) << 16) | ((g & 0xFF) << 8) | (b & 0xFF); }
+    public static int rgba(int r, int g, int b, int a) { return ((a & 0xFF) << 24) | ((r & 0xFF) << 16) | ((g & 0xFF) << 8) | (b & 0xFF); }
+    public static int argb(int a, int r, int g, int b) { return ((a & 0xFF) << 24) | ((r & 0xFF) << 16) | ((g & 0xFF) << 8) | (b & 0xFF); }
+
+    /** Create from HSV (h 0..1, s 0..1, v 0..1). */
+    public static int hsv(float h, float s, float v) {
+        h = h % 1f * 6f;
+        int i = (int)h;
+        float f = h - i, p = v * (1f - s), q = v * (1f - s * f), t = v * (1f - s * (1f - f));
+        float r=0,g=0,b=0;
+        switch (i % 6) {
+            case 0: r=v; g=t; b=p; break;
+            case 1: r=q; g=v; b=p; break;
+            case 2: r=p; g=v; b=t; break;
+            case 3: r=p; g=q; b=v; break;
+            case 4: r=t; g=p; b=v; break;
+            default: r=v; g=p; b=q; break;
+        }
+        return (0xFF << 24) | ((int)(r*255) << 16) | ((int)(g*255) << 8) | (int)(b*255);
+    }
+
+    /** Parse hex like "#RRGGBB" or "#AARRGGBB" or "RRGGBB". */
+    public static int fromHex(String hex) {
+        String h = hex.startsWith("#") ? hex.substring(1) : hex;
+        long n = Long.parseLong(h, 16);
+        if (h.length() == 6) return (int)(0xFF000000L | n);
+        return (int)n;
+    }
+
+    /** Lighten a color by amount 0..1. */
+    public static int lighten(int argb, float amount) {
+        int a = (argb >>> 24) & 0xFF, r = (argb >> 16) & 0xFF, g = (argb >> 8) & 0xFF, b = argb & 0xFF;
+        r = (int)(r + (255 - r) * amount); g = (int)(g + (255 - g) * amount); b = (int)(b + (255 - b) * amount);
+        return (a << 24) | (r << 16) | (g << 8) | b;
+    }
+
+    /** Grayscale. */
+    public static int grayscale(int argb) {
+        int a = (argb >>> 24) & 0xFF, r = (argb >> 16) & 0xFF, g = (argb >> 8) & 0xFF, b = argb & 0xFF;
+        int l = (int)(0.2126 * r + 0.7152 * g + 0.0722 * b);
+        return (a << 24) | (l << 16) | (l << 8) | l;
+    }
+
+    /** Predefined Catppuccin Mocha palette. */
+    public static final class Theme {
+        public static final int BG = 0xFF1E1E2E;
+        public static final int SURFACE = 0xFF313244;
+        public static final int PRIMARY = 0xFF89B4FA;
+        public static final int ACCENT = 0xFFF38BA8;
+        public static final int TEXT = 0xFFCDD6F4;
+        public static final int SUCCESS = 0xFFA6E3A1;
+        public static final int WARNING = 0xFFF9E2AF;
+        public static final int ERROR = 0xFFF38BA8;
+    }
 }

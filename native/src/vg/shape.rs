@@ -168,6 +168,130 @@ impl Color {
         };
         Self { r, g, b, a: 1.0 }
     }
+
+    // --- Extended RGB / HSV support ---
+
+    /// Create from 0-255 RGB
+    pub const fn rgb_u8(r: u8, g: u8, b: u8) -> Self { Self::rgba8(r, g, b, 255) }
+
+    /// Create from HSV (h 0..1, s 0..1, v 0..1)
+    pub fn from_hsv(h: f32, s: f32, v: f32) -> Self {
+        let h = h.fract() * 6.0;
+        let i = h as i32;
+        let f = h - i as f32;
+        let p = v * (1.0 - s);
+        let q = v * (1.0 - s * f);
+        let t = v * (1.0 - s * (1.0 - f));
+        let (r, g, b) = match i % 6 {
+            0 => (v, t, p),
+            1 => (q, v, p),
+            2 => (p, v, t),
+            3 => (p, q, v),
+            4 => (t, p, v),
+            _ => (v, p, q),
+        };
+        Self { r, g, b, a: 1.0 }
+    }
+
+    pub fn to_hsv(self) -> (f32, f32, f32) {
+        let max = self.r.max(self.g).max(self.b);
+        let min = self.r.min(self.g).min(self.b);
+        let d = max - min;
+        let h = if d == 0.0 { 0.0 } else if max == self.r {
+            60.0 * (((self.g - self.b) / d) % 6.0)
+        } else if max == self.g {
+            60.0 * ((self.b - self.r) / d + 2.0)
+        } else {
+            60.0 * ((self.r - self.g) / d + 4.0)
+        };
+        let s = if max == 0.0 { 0.0 } else { d / max };
+        ((h / 360.0).rem_euclid(1.0), s, max)
+    }
+
+    pub fn with_red(self, r: f32) -> Self { Self { r: r.clamp(0.0, 1.0), ..self } }
+    pub fn with_green(self, g: f32) -> Self { Self { g: g.clamp(0.0, 1.0), ..self } }
+    pub fn with_blue(self, b: f32) -> Self { Self { b: b.clamp(0.0, 1.0), ..self } }
+
+    pub fn grayscale(self) -> Self {
+        let l = 0.2126 * self.r + 0.7152 * self.g + 0.0722 * self.b;
+        Self { r: l, g: l, b: l, a: self.a }
+    }
+
+    pub fn invert(self) -> Self { Self { r: 1.0 - self.r, g: 1.0 - self.g, b: 1.0 - self.b, a: self.a } }
+
+    pub fn saturate(self, amount: f32) -> Self {
+        let (h, s, v) = self.to_hsv();
+        Self::from_hsv(h, (s + amount).clamp(0.0, 1.0), v).with_alpha(self.a)
+    }
+
+    pub fn to_rgba8(self) -> [u8; 4] {
+        [(self.r * 255.0) as u8, (self.g * 255.0) as u8, (self.b * 255.0) as u8, (self.a * 255.0) as u8]
+    }
+
+    pub fn to_hex(self) -> String {
+        format!("#{:02X}{:02X}{:02X}{:02X}", (self.r*255.0) as u8, (self.g*255.0) as u8, (self.b*255.0) as u8, (self.a*255.0) as u8)
+    }
+
+    // Predefined palette - Catppuccin + Minecraft + basic
+    pub const BLACK: Self = Self { r: 0.0, g: 0.0, b: 0.0, a: 1.0 };
+    pub const WHITE: Self = Self { r: 1.0, g: 1.0, b: 1.0, a: 1.0 };
+    pub const RED: Self = Self { r: 1.0, g: 0.0, b: 0.0, a: 1.0 };
+    pub const GREEN: Self = Self { r: 0.0, g: 1.0, b: 0.0, a: 1.0 };
+    pub const BLUE: Self = Self { r: 0.0, g: 0.0, b: 1.0, a: 1.0 };
+    pub const TRANSPARENT: Self = Self { r: 0.0, g: 0.0, b: 0.0, a: 0.0 };
+}
+
+/// Theme palette for modders to quickly style their client
+#[derive(Clone, Debug)]
+pub struct Theme {
+    pub background: Color,
+    pub surface: Color,
+    pub primary: Color,
+    pub secondary: Color,
+    pub accent: Color,
+    pub text: Color,
+    pub text_secondary: Color,
+    pub border: Color,
+    pub success: Color,
+    pub warning: Color,
+    pub error: Color,
+}
+
+impl Default for Theme {
+    fn default() -> Self { Self::catppuccin_mocha() }
+}
+
+impl Theme {
+    pub fn catppuccin_mocha() -> Self {
+        Self {
+            background: Color::argb(0xFF1E1E2E),
+            surface: Color::argb(0xFF313244),
+            primary: Color::argb(0xFF89B4FA),
+            secondary: Color::argb(0xFFA6ADC8),
+            accent: Color::argb(0xFFF38BA8),
+            text: Color::argb(0xFFCDD6F4),
+            text_secondary: Color::argb(0xFFA6ADC8),
+            border: Color::argb(0xFF45475A),
+            success: Color::argb(0xFFA6E3A1),
+            warning: Color::argb(0xFFF9E2AF),
+            error: Color::argb(0xFFF38BA8),
+        }
+    }
+    pub fn midnight() -> Self {
+        Self {
+            background: Color::argb(0xFF0F0F14),
+            surface: Color::argb(0xFF1A1A22),
+            primary: Color::argb(0xFF7AA5FF),
+            secondary: Color::argb(0xFF8E8EA0),
+            accent: Color::argb(0xFFFF6B9D),
+            text: Color::argb(0xFFEAEAF0),
+            text_secondary: Color::argb(0xFF9A9AB0),
+            border: Color::argb(0xFF2A2A3A),
+            success: Color::argb(0xFF4ECCA3),
+            warning: Color::argb(0xFFF0C674),
+            error: Color::argb(0xFFFC5C7D),
+        }
+    }
 }
 
 /// Easing helpers for animations (t in 0..1)
