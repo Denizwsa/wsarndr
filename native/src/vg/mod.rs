@@ -504,6 +504,7 @@ impl VgContext {
             TextAlign::Center => x - self.text_width(text, size) * 0.5,
             TextAlign::Right => x - self.text_width(text, size),
         };
+        let is_small = size < 13.0;
         for ch in text.chars() {
             if let Some(gi) = self.font_atlas.glyph_info(ch as u32) {
                 let gw = gi.width * scale;
@@ -513,6 +514,21 @@ impl VgContext {
                 let gx = (pen_x + gi.x_offset * scale).round();
                 let gy = (y + gi.y_offset * scale).round();
                 if gw > 0.0 && gh > 0.0 {
+                    // For very small text, faux-bold by drawing a second copy offset by 0.5px
+                    if is_small {
+                        let bold = Shape {
+                            kind: ShapeKind::Text,
+                            x: gx + 0.7,
+                            y: gy,
+                            w: gw,
+                            h: gh,
+                            fill_color: color.with_alpha(color.a * 0.55),
+                            stroke_width: 0.0,
+                            uv_override: Some(uv),
+                            ..Default::default()
+                        };
+                        self.draw_shape(&bold);
+                    }
                     let shape = Shape {
                         kind: ShapeKind::Text,
                         x: gx,

@@ -249,7 +249,7 @@ const BUNDLED_FONT: &[u8] = include_bytes!("../../assets/JetBrainsMono-Regular.t
 pub fn load_default_font(device: SharedDevice, size_px: f32) -> anyhow::Result<FontAtlas> {
     // Primary: bundled font inside the crate (no OS dependency)
     if !BUNDLED_FONT.is_empty() {
-        log::info!("font: bundled AdwaitaSans-Regular.ttf ({} bytes)", BUNDLED_FONT.len());
+        log::info!("font: bundled JetBrainsMono-Regular.ttf ({} bytes)", BUNDLED_FONT.len());
         return FontAtlas::load(device, BUNDLED_FONT, size_px);
     }
     // Fallback: system fonts
