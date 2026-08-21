@@ -244,7 +244,7 @@ impl Drop for FontAtlas {
     }
 }
 
-const BUNDLED_FONT: &[u8] = include_bytes!("../../assets/AdwaitaSans-Regular.ttf");
+const BUNDLED_FONT: &[u8] = include_bytes!("../../assets/JetBrainsMono-Regular.ttf");
 
 pub fn load_default_font(device: SharedDevice, size_px: f32) -> anyhow::Result<FontAtlas> {
     // Primary: bundled font inside the crate (no OS dependency)
