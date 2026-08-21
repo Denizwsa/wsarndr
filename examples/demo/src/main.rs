@@ -68,7 +68,7 @@ impl ApplicationHandler for App {
                 let _t = self.start.elapsed().as_secs_f32();
 
                 let result = renderer.render(|vg, w, h| {
-                    let s = (w / 1280.0).min(h / 720.0);
+                    let s = (w / 1280.0).min(h / 720.0).clamp(0.75, 1.4);
 
                     // ClickGUI panel
                     let pw = 300.0 * s;

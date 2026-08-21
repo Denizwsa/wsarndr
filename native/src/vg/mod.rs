@@ -511,8 +511,9 @@ impl VgContext {
                 let uv = [gi.u0, gi.v0, gi.u1, gi.v1];
                 // y is top of the text box; baseline is top + ascent.
                 let baseline = y + self.font_atlas.ascent * scale;
-                let gx = pen_x + gi.x_offset * scale;
-                let gy = baseline - gi.y_offset * scale - gh;
+                // Snap to pixel for crisp text (avoids subpixel blur that makes some letters look bolder)
+                let gx = (pen_x + gi.x_offset * scale).round();
+                let gy = (baseline - gi.y_offset * scale - gh).round();
                 if gw > 0.0 && gh > 0.0 {
                     let shape = Shape {
                         kind: ShapeKind::Text,
