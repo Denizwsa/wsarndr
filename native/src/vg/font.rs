@@ -53,6 +53,8 @@ impl FontAtlas {
 
         let mut glyphs = Vec::with_capacity(97);
 
+        // Uniform height target for stable UI (all glyphs same visual height)
+        let target_h = font_size_px * 0.68;
         for (i, code) in (32u32..=126).chain(0x011E..=0x011F).enumerate() {
             let col = i % ATLAS_COLS;
             let row = i / ATLAS_COLS;
@@ -60,29 +62,49 @@ impl FontAtlas {
             let (m, coverage) = font.rasterize(ch, font_size_px);
             let cw = m.width;
             let ch_px = m.height;
-            let ox = col * cell_w + cell_w.saturating_sub(cw) / 2;
-            let oy = row * cell_h + cell_h.saturating_sub(ch_px) / 2;
-            for (py, line) in coverage.chunks(cw.max(1)).enumerate() {
-                for (px, &a) in line.iter().enumerate() {
-                    if a > 0 && ox + px < atlas_w as usize && oy + py < atlas_h as usize {
-                        pixels[(oy + py) * atlas_w as usize + (ox + px)] = a;
+            // Scale glyph to uniform height (cap height) preserving aspect,
+            // capped to avoid tiny glyphs like '-' becoming huge blocks.
+            let (new_w, new_h, off_x, off_y, adv) = if cw == 0 || ch_px == 0 {
+                (0, 0, 0, 0, m.advance_width)
+            } else {
+                let s = (target_h / ch_px as f32).clamp(0.5, 1.9);
+                let nw = ((cw as f32 * s).round() as usize).max(1).min(cell_w);
+                let nh = ((ch_px as f32 * s).round() as usize).max(1).min(cell_h);
+                let adv = m.advance_width * s;
+                let ox = (cell_w - nw) / 2;
+                let oy = (cell_h - nh) / 2;
+                (nw, nh, ox, oy, adv)
+            };
+            let ox = col * cell_w + off_x;
+            let oy = row * cell_h + off_y;
+            if new_w > 0 && new_h > 0 && cw > 0 && ch_px > 0 {
+                let sx = cw as f32 / new_w as f32;
+                let sy = ch_px as f32 / new_h as f32;
+                for dy in 0..new_h {
+                    let syi = ((dy as f32 * sy) as usize).min(ch_px - 1);
+                    for dx in 0..new_w {
+                        let sxi = ((dx as f32 * sx) as usize).min(cw - 1);
+                        let a = coverage[syi * cw + sxi];
+                        if a > 0 {
+                            pixels[(oy + dy) * atlas_w as usize + (ox + dx)] = a;
+                        }
                     }
                 }
             }
             let u0 = ox as f32 / atlas_w as f32;
             let v0 = oy as f32 / atlas_h as f32;
-            let u1 = (ox + cw) as f32 / atlas_w as f32;
-            let v1 = (oy + ch_px) as f32 / atlas_h as f32;
+            let u1 = (ox + new_w) as f32 / atlas_w as f32;
+            let v1 = (oy + new_h) as f32 / atlas_h as f32;
             glyphs.push(GlyphInfo {
                 u0,
                 v0,
                 u1,
                 v1,
-                width: cw as f32,
-                height: ch_px as f32,
-                x_offset: m.xmin as f32,
-                y_offset: m.ymin as f32,
-                advance: m.advance_width,
+                width: new_w as f32,
+                height: new_h as f32,
+                x_offset: off_x as f32,
+                y_offset: off_y as f32,
+                advance: adv,
                 cell_w: cell_w as f32,
                 cell_h: cell_h as f32,
             });

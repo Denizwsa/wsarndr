@@ -509,11 +509,9 @@ impl VgContext {
                 let gw = gi.width * scale;
                 let gh = gi.height * scale;
                 let uv = [gi.u0, gi.v0, gi.u1, gi.v1];
-                // y is top of the text box; baseline is top + ascent.
-                let baseline = y + self.font_atlas.ascent * scale;
-                // Snap to pixel for crisp text (avoids subpixel blur that makes some letters look bolder)
+                // Uniform cell-centered glyphs: off_x/off_y are centering offsets within cell.
                 let gx = (pen_x + gi.x_offset * scale).round();
-                let gy = (baseline - gi.y_offset * scale - gh).round();
+                let gy = (y + gi.y_offset * scale).round();
                 if gw > 0.0 && gh > 0.0 {
                     let shape = Shape {
                         kind: ShapeKind::Text,
