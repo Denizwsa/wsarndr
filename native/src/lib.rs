@@ -1,3 +1,4 @@
+pub mod gl;
 pub mod prelude;
 pub mod renderer;
 pub mod vg;
@@ -709,4 +710,90 @@ pub unsafe extern "system" fn Java_dev_wsarndr_Native_drawRoundedImage(
         None => return,
     };
     rh.0.lock().unwrap().queue_draw_rounded_image(x, y, w, h, r, Color::argb(argb as u32));
+}// ---- NanoVG compat: save/restore/transform/path/font ----
+#[no_mangle]
+pub unsafe extern "system" fn Java_dev_wsarndr_Native_save(mut env: JNIEnv, _class: JClass, ptr: jlong) {
+    if let Some(h) = handle(&mut env, ptr) { h.0.lock().unwrap().queue_save(); }
+}
+#[no_mangle]
+pub unsafe extern "system" fn Java_dev_wsarndr_Native_restore(mut env: JNIEnv, _class: JClass, ptr: jlong) {
+    if let Some(h) = handle(&mut env, ptr) { h.0.lock().unwrap().queue_restore(); }
+}
+#[no_mangle]
+pub unsafe extern "system" fn Java_dev_wsarndr_Native_translate(mut env: JNIEnv, _class: JClass, ptr: jlong, tx: jfloat, ty: jfloat) {
+    if let Some(h) = handle(&mut env, ptr) { h.0.lock().unwrap().queue_translate(tx, ty); }
+}
+#[no_mangle]
+pub unsafe extern "system" fn Java_dev_wsarndr_Native_rotate(mut env: JNIEnv, _class: JClass, ptr: jlong, deg: jfloat) {
+    if let Some(h) = handle(&mut env, ptr) { h.0.lock().unwrap().queue_rotate(deg); }
+}
+#[no_mangle]
+pub unsafe extern "system" fn Java_dev_wsarndr_Native_scale(mut env: JNIEnv, _class: JClass, ptr: jlong, sx: jfloat, sy: jfloat) {
+    if let Some(h) = handle(&mut env, ptr) { h.0.lock().unwrap().queue_scale(sx, sy); }
+}
+#[no_mangle]
+pub unsafe extern "system" fn Java_dev_wsarndr_Native_globalAlpha(mut env: JNIEnv, _class: JClass, ptr: jlong, a: jfloat) {
+    if let Some(h) = handle(&mut env, ptr) { h.0.lock().unwrap().queue_global_alpha(a); }
+}
+#[no_mangle]
+pub unsafe extern "system" fn Java_dev_wsarndr_Native_beginPath(mut env: JNIEnv, _class: JClass, ptr: jlong) {
+    if let Some(h) = handle(&mut env, ptr) { h.0.lock().unwrap().queue_begin_path(); }
+}
+#[no_mangle]
+pub unsafe extern "system" fn Java_dev_wsarndr_Native_moveTo(mut env: JNIEnv, _class: JClass, ptr: jlong, x: jfloat, y: jfloat) {
+    if let Some(h) = handle(&mut env, ptr) { h.0.lock().unwrap().queue_move_to(x, y); }
+}
+#[no_mangle]
+pub unsafe extern "system" fn Java_dev_wsarndr_Native_lineTo(mut env: JNIEnv, _class: JClass, ptr: jlong, x: jfloat, y: jfloat) {
+    if let Some(h) = handle(&mut env, ptr) { h.0.lock().unwrap().queue_line_to(x, y); }
+}
+#[no_mangle]
+pub unsafe extern "system" fn Java_dev_wsarndr_Native_bezierTo(mut env: JNIEnv, _class: JClass, ptr: jlong, c1x: jfloat, c1y: jfloat, c2x: jfloat, c2y: jfloat, x: jfloat, y: jfloat) {
+    if let Some(h) = handle(&mut env, ptr) { h.0.lock().unwrap().queue_bezier_to(c1x, c1y, c2x, c2y, x, y); }
+}
+#[no_mangle]
+pub unsafe extern "system" fn Java_dev_wsarndr_Native_quadTo(mut env: JNIEnv, _class: JClass, ptr: jlong, cx: jfloat, cy: jfloat, x: jfloat, y: jfloat) {
+    if let Some(h) = handle(&mut env, ptr) { h.0.lock().unwrap().queue_quad_to(cx, cy, x, y); }
+}
+#[no_mangle]
+pub unsafe extern "system" fn Java_dev_wsarndr_Native_closePath(mut env: JNIEnv, _class: JClass, ptr: jlong) {
+    if let Some(h) = handle(&mut env, ptr) { h.0.lock().unwrap().queue_close_path(); }
+}
+#[no_mangle]
+pub unsafe extern "system" fn Java_dev_wsarndr_Native_fill(mut env: JNIEnv, _class: JClass, ptr: jlong) {
+    if let Some(h) = handle(&mut env, ptr) { h.0.lock().unwrap().queue_fill(); }
+}
+#[no_mangle]
+pub unsafe extern "system" fn Java_dev_wsarndr_Native_stroke(mut env: JNIEnv, _class: JClass, ptr: jlong) {
+    if let Some(h) = handle(&mut env, ptr) { h.0.lock().unwrap().queue_stroke(); }
+}
+#[no_mangle]
+pub unsafe extern "system" fn Java_dev_wsarndr_Native_fontFace(mut env: JNIEnv, _class: JClass, ptr: jlong, name: JString) {
+    if let Some(h) = handle(&mut env, ptr) {
+        let s: String = env.get_string(&name).map(|j| j.into()).unwrap_or_default();
+        h.0.lock().unwrap().queue_font_face(s);
+    }
+}
+#[no_mangle]
+pub unsafe extern "system" fn Java_dev_wsarndr_Native_fontSize(mut env: JNIEnv, _class: JClass, ptr: jlong, size: jfloat) {
+    if let Some(h) = handle(&mut env, ptr) { h.0.lock().unwrap().queue_font_size(size); }
+}
+#[no_mangle]
+pub unsafe extern "system" fn Java_dev_wsarndr_Native_createFont(mut env: JNIEnv, _class: JClass, ptr: jlong, name: JString, data: jni::objects::JByteArray) -> jint {
+    if let Some(h) = handle(&mut env, ptr) {
+        let s: String = env.get_string(&name).map(|j| j.into()).unwrap_or_default();
+        let bytes = env.convert_byte_array(data).unwrap_or_default();
+        let res = h.0.lock().unwrap().vg.create_font(&s, &bytes);
+        return res as jint;
+    }
+    -1
+}
+#[no_mangle]
+pub unsafe extern "system" fn Java_dev_wsarndr_Native_textBounds(mut env: JNIEnv, _class: JClass, ptr: jlong, x: jfloat, y: jfloat, text: JString, size: jfloat) -> jni::sys::jfloatArray {
+    let rh = match handle(&mut env, ptr) { Some(h) => h, None => return std::ptr::null_mut() };
+    let s: String = env.get_string(&text).map(|j| j.into()).unwrap_or_default();
+    let b = { let guard = rh.0.lock().unwrap(); guard.vg.text_bounds(x, y, &s, size) };
+    let arr = env.new_float_array(4).unwrap();
+    let _ = env.set_float_array_region(&arr, 0, &b);
+    arr.into_raw()
 }

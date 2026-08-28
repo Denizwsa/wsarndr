@@ -144,6 +144,28 @@ public final class Native {
     /** Draw the user image with rounded corners. */
     public static native void drawRoundedImage(long ptr, float x, float y, float w, float h, float radius, int tintArgb);
 
+    // ---- NanoVG compat: state ----
+    public static native void save(long ptr);
+    public static native void restore(long ptr);
+    public static native void translate(long ptr, float tx, float ty);
+    public static native void rotate(long ptr, float deg);
+    public static native void scale(long ptr, float sx, float sy);
+    public static native void globalAlpha(long ptr, float alpha);
+    // ---- NanoVG compat: path ----
+    public static native void beginPath(long ptr);
+    public static native void moveTo(long ptr, float x, float y);
+    public static native void lineTo(long ptr, float x, float y);
+    public static native void bezierTo(long ptr, float c1x, float c1y, float c2x, float c2y, float x, float y);
+    public static native void quadTo(long ptr, float cx, float cy, float x, float y);
+    public static native void closePath(long ptr);
+    public static native void fill(long ptr);
+    public static native void stroke(long ptr);
+    // ---- NanoVG compat: font ----
+    public static native void fontFace(long ptr, String name);
+    public static native void fontSize(long ptr, float size);
+    public static native int createFont(long ptr, String name, byte[] ttfData);
+    public static native float[] textBounds(long ptr, float x, float y, String text, float size);
+
     // ---- Color helpers (pure Java) ----
 
     /** Linearly interpolate between two ARGB colors. t in 0..1. */

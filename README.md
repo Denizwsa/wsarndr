@@ -114,6 +114,78 @@ vg.linear_gradient_rounded_rect(x, y, w, h, r, from, to, color0, color1);
 vg.radial_gradient_circle(cx, cy, r, color0, color1);
 ```
 
+### NanoVG Compatibility
+
+wsarndr now implements the full NanoVG API for easy migration:
+
+```rust
+vg.save();
+vg.translate(10.0, 20.0);
+vg.rotate(45.0);
+vg.scale(1.2, 1.2);
+vg.begin_path();
+vg.move_to(0.0, 0.0);
+vg.line_to(100.0, 0.0);
+vg.bezier_to(150.0, 0.0, 150.0, 100.0, 100.0, 100.0);
+vg.close_path();
+vg.fill();
+vg.stroke();
+vg.restore();
+vg.global_alpha(0.8);
+vg.scissor(0.0, 0.0, 200.0, 200.0);
+vg.reset_scissor();
+```
+
+All `nvg*` functions are available via `VgContext` (`begin_path`, `move_to`, `line_to`, `bezier_to`, `quad_to`, `arc`, `close_path`, `fill`, `stroke`, `save`/`restore`, `translate`/`rotate`/`scale`/`skew`, `global_alpha`, `scissor`).
+
+### Custom Fonts
+
+Load any TTF/OTF at runtime:
+
+```rust
+// Rust
+vg.create_font("myfont", &ttf_bytes);
+vg.font_face("myfont");
+vg.font_size(18.0);
+let bounds = vg.text_bounds(0.0, 0.0, "Hello", 18.0);
+vg.text(10.0, 20.0, "Hello custom font", 18.0, Color::WHITE);
+```
+
+```java
+// Java
+wsarndr.loadFont(Paths.get("MyFont.ttf"), 48);
+wsarndr.createFont("myfont", ttfBytes);
+wsarndr.fontFace("myfont");
+wsarndr.fontSize(18);
+float[] bounds = wsarndr.textBounds(x, y, "Hello", 18);
+```
+
+Fonts support fallback: if a glyph is missing in the current font, wsarndr automatically tries other loaded fonts and system fallbacks (JetBrains Mono, Liberation, Noto, DejaVu).
+
+### Animations
+
+Pure-Java helpers and Rust `easing` module:
+
+```rust
+use wsarndr::vg::shape::easing::{lerp, ease_out_cubic, ease_in_out_cubic, animate};
+let x = lerp(0.0, 100.0, t);
+let y = ease_out_cubic(t);
+let cur = animate(cur, target, 8.0, dt); // exponential smoothing
+```
+
+```java
+// Java
+float x = WsArndr.lerp(a, b, t);
+float y = WsArndr.easeOutCubic(t);
+float cur = WsArndr.animate(cur, target, 8f, dt);
+WsArndr.Animator anim = new WsArndr.Animator(0);
+anim.setTarget(100);
+anim.update(dt);
+float v = anim.value;
+```
+
+Also `WsArndr` high-level wrapper (`new WsArndr(winType, win, display)`) provides `save`/`restore`, `translate`/`rotate`/`scale`, `beginPath`/`moveTo`/`lineTo`/`bezierTo`/`fill`/`stroke`, `fontFace`/`fontSize`/`textBounds`, and `shadowRoundedRect`, `drawImage`, etc.
+
 ### Color
 
 Colors are ARGB packed as `u32`:

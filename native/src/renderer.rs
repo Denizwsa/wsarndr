@@ -83,6 +83,22 @@ pub enum UiCommand {
     Shadow(f32, f32, f32, f32, f32, f32, [f32; 2], Color),
     DrawImage(f32, f32, f32, f32, Color),
     DrawRoundedImage(f32, f32, f32, f32, f32, Color),
+    Save,
+    Restore,
+    Translate(f32, f32),
+    Rotate(f32),
+    Scale(f32, f32),
+    GlobalAlpha(f32),
+    BeginPath,
+    MoveTo(f32, f32),
+    LineTo(f32, f32),
+    BezierTo(f32, f32, f32, f32, f32, f32),
+    QuadTo(f32, f32, f32, f32),
+    ClosePath,
+    Fill,
+    Stroke,
+    FontFace(String),
+    FontSize(f32),
 }
 
 /// Builder for Renderer - lets modders configure everything before creation.
@@ -336,6 +352,22 @@ impl Renderer {
             q.push(UiCommand::DrawRoundedImage(x, y, w, h, r, tint));
         }
     }
+    pub fn queue_save(&self) { if let Ok(mut q) = self.ui_queue.lock() { q.push(UiCommand::Save); } }
+    pub fn queue_restore(&self) { if let Ok(mut q) = self.ui_queue.lock() { q.push(UiCommand::Restore); } }
+    pub fn queue_translate(&self, tx: f32, ty: f32) { if let Ok(mut q) = self.ui_queue.lock() { q.push(UiCommand::Translate(tx, ty)); } }
+    pub fn queue_rotate(&self, deg: f32) { if let Ok(mut q) = self.ui_queue.lock() { q.push(UiCommand::Rotate(deg)); } }
+    pub fn queue_scale(&self, sx: f32, sy: f32) { if let Ok(mut q) = self.ui_queue.lock() { q.push(UiCommand::Scale(sx, sy)); } }
+    pub fn queue_global_alpha(&self, a: f32) { if let Ok(mut q) = self.ui_queue.lock() { q.push(UiCommand::GlobalAlpha(a)); } }
+    pub fn queue_begin_path(&self) { if let Ok(mut q) = self.ui_queue.lock() { q.push(UiCommand::BeginPath); } }
+    pub fn queue_move_to(&self, x: f32, y: f32) { if let Ok(mut q) = self.ui_queue.lock() { q.push(UiCommand::MoveTo(x, y)); } }
+    pub fn queue_line_to(&self, x: f32, y: f32) { if let Ok(mut q) = self.ui_queue.lock() { q.push(UiCommand::LineTo(x, y)); } }
+    pub fn queue_bezier_to(&self, c1x: f32, c1y: f32, c2x: f32, c2y: f32, x: f32, y: f32) { if let Ok(mut q) = self.ui_queue.lock() { q.push(UiCommand::BezierTo(c1x, c1y, c2x, c2y, x, y)); } }
+    pub fn queue_quad_to(&self, cx: f32, cy: f32, x: f32, y: f32) { if let Ok(mut q) = self.ui_queue.lock() { q.push(UiCommand::QuadTo(cx, cy, x, y)); } }
+    pub fn queue_close_path(&self) { if let Ok(mut q) = self.ui_queue.lock() { q.push(UiCommand::ClosePath); } }
+    pub fn queue_fill(&self) { if let Ok(mut q) = self.ui_queue.lock() { q.push(UiCommand::Fill); } }
+    pub fn queue_stroke(&self) { if let Ok(mut q) = self.ui_queue.lock() { q.push(UiCommand::Stroke); } }
+    pub fn queue_font_face(&self, name: String) { if let Ok(mut q) = self.ui_queue.lock() { q.push(UiCommand::FontFace(name)); } }
+    pub fn queue_font_size(&self, s: f32) { if let Ok(mut q) = self.ui_queue.lock() { q.push(UiCommand::FontSize(s)); } }
 
     pub fn clear_queue(&self) {
         if let Ok(mut q) = self.ui_queue.lock() {
@@ -378,6 +410,22 @@ impl Renderer {
                     UiCommand::Shadow(x, y, w, h, r, b, off, c) => vg.shadow_rounded_rect(x, y, w, h, r, b, off, c),
                     UiCommand::DrawImage(x, y, w, h, c) => vg.draw_image(x, y, w, h, c),
                     UiCommand::DrawRoundedImage(x, y, w, h, r, c) => vg.draw_rounded_image(x, y, w, h, r, c),
+                    UiCommand::Save => vg.save(),
+                    UiCommand::Restore => vg.restore(),
+                    UiCommand::Translate(tx, ty) => vg.translate(tx, ty),
+                    UiCommand::Rotate(a) => vg.rotate(a),
+                    UiCommand::Scale(sx, sy) => vg.scale(sx, sy),
+                    UiCommand::GlobalAlpha(a) => vg.global_alpha(a),
+                    UiCommand::BeginPath => vg.begin_path(),
+                    UiCommand::MoveTo(x, y) => vg.move_to(x, y),
+                    UiCommand::LineTo(x, y) => vg.line_to(x, y),
+                    UiCommand::BezierTo(c1x, c1y, c2x, c2y, x, y) => vg.bezier_to(c1x, c1y, c2x, c2y, x, y),
+                    UiCommand::QuadTo(cx, cy, x, y) => vg.quad_to(cx, cy, x, y),
+                    UiCommand::ClosePath => vg.close_path(),
+                    UiCommand::Fill => vg.fill(),
+                    UiCommand::Stroke => vg.stroke(),
+                    UiCommand::FontFace(s) => vg.font_face(&s),
+                    UiCommand::FontSize(s) => vg.font_size(s),
                 }
             }
         }
