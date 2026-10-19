@@ -709,7 +709,7 @@ unsafe fn create_font_texture(gl: &glow::Context) -> Result<(glow::NativeTexture
         glow::TEXTURE_2D, 0, glow::R8 as i32,
         atlas_w as i32, atlas_h as i32, 0,
         glow::RED, glow::UNSIGNED_BYTE,
-        Some(&pixels),
+        glow::PixelUnpackData::Slice(Some(&pixels)),
     );
     gl.tex_parameter_i32(glow::TEXTURE_2D, glow::TEXTURE_MIN_FILTER, glow::LINEAR as i32);
     gl.tex_parameter_i32(glow::TEXTURE_2D, glow::TEXTURE_MAG_FILTER, glow::LINEAR as i32);
