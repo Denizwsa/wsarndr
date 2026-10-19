@@ -3,6 +3,16 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
+fn find_shader_compiler() -> Option<&'static str> {
+    // Prefer glslc (shaderc) if available, fall back to glslangValidator.
+    for candidate in ["glslc", "glslangValidator"] {
+        if Command::new(candidate).arg("--version").output().is_ok() {
+            return Some(candidate);
+        }
+    }
+    None
+}
+
 fn compile_shader(src: &Path, out: &Path) -> anyhow::Result<()> {
     let stage = match src.extension().and_then(|e| e.to_str()) {
         Some("vert") => "vert",
@@ -10,14 +20,27 @@ fn compile_shader(src: &Path, out: &Path) -> anyhow::Result<()> {
         Some("geom") => "geom",
         other => anyhow::bail!("unknown shader stage for {:?}: {:?}", src, other),
     };
-    let status = Command::new("glslc")
-        .arg("-O")
-        .arg(src)
-        .arg("-o")
-        .arg(out)
-        .status()?;
+    let compiler = find_shader_compiler().ok_or_else(|| {
+        anyhow::anyhow!("no shader compiler found (install glslc or glslangValidator)")
+    })?;
+    let status = if compiler == "glslc" {
+        Command::new(compiler)
+            .arg("-O")
+            .arg(src)
+            .arg("-o")
+            .arg(out)
+            .status()?
+    } else {
+        // glslangValidator: -V for Vulkan target, -o for output
+        Command::new(compiler)
+            .arg("-V")
+            .arg(src)
+            .arg("-o")
+            .arg(out)
+            .status()?
+    };
     if !status.success() {
-        anyhow::bail!("glslc failed for {:?}", src);
+        anyhow::bail!("{} failed for {:?}", compiler, src);
     }
     println!("cargo:rerun-if-changed={}", src.display());
     println!("cargo:rerun-if-changed={}", out.display());
